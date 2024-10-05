@@ -93,6 +93,7 @@ In `weewx.conf` it looks like that:
             #html_divide_tag = html
             #replace_extension = True
             #write_php = True
+            #merge_skin = replace_me
             [[[[home-page]]]]
                 file = index.html
                 #html_divide_tag = html
@@ -108,6 +109,11 @@ In `weewx.conf` it looks like that:
 ...
 ```
 
+* `merge_skin`: If this key points to a valid skin, its `skin.conf` file is
+  searched for templates, and SQLupload entries are created for each of them
+  and merged into the configuration. If a section of the same name exists
+  in both the skin and the SQLupload configuration, the SQLupload section 
+  takes precedence over the skin section.
 * `file`: file name and path of the file to upload to the database
 * `html_divide_tag`: tag, which surrounds the variable part of the page, for
   example `html` or `body`. If the value is `none`, the whole file is
@@ -119,10 +125,10 @@ In `weewx.conf` it looks like that:
 
 ## How to enable PHP on the web server?
 
-If the file name ends with `.php` PHP is processed automatically. So the
-easiest way is to let this extension rename all the non-static `.html` files
-to `.php` and replace the internal links as well. This is the default
-behavior if you do not set special options.
+If the file name ends with `.php` the server processes PHP automatically. 
+So the easiest way is to let this extension rename all the non-static 
+`.html` files to `.php` and replace the internal links as well. This is 
+the default behavior if you do not set special options.
 
 If you set `replace_extension` to `False` (either globally or by file), the
 original file name extension is not changed. In this case you have to enable

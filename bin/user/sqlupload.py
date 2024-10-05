@@ -25,6 +25,13 @@ import os.path
 import configobj
 import time
 import html.parser
+import json
+
+try:
+    import hashlib
+    has_hashlib=True
+except ImportError:
+    has_hashlib=False
 
 if __name__ == '__main__':
     import sys
@@ -154,7 +161,7 @@ if __name__ == '__main__':
 class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
 
     PHP = '''<?php
-  $id="%%s"
+  $id="%%s";
   $dbname = "%s";
   $user = "%s";
   $password = "%s";
@@ -163,11 +170,11 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
     $user,
     $password
   );
-  $sql = "SELECT * FROM %s WHERE `ID`=?"
+  $sql = "SELECT * FROM %s WHERE `ID`=?";
   $statement = $pdo->prepare($sql); 
   $statement->execute([$id]);
   while($row = $statement->fetch()) {
-    echo $row["TEXT"]
+    echo $row["TEXT"];
   }
   $pdo = null;
 ?>
@@ -199,10 +206,16 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
             target_path = os.path.join(
                 self.config_dict['WEEWX_ROOT'],
                 self.skin_dict['HTML_ROOT'])
+        hash_fn = os.path.join(target_path,'#SQLupload.last')
 
         # configuration section for this generator
         generator_dict = self.skin_dict.get('SQLuploadGenerator',configobj.ConfigObj())
         self.dry_run = generator_dict.get('dry_run',False)
+        if 'merge_skin' in generator_dict:
+            self.merge_skin(generator_dict)
+        if __name__ == '__main__':
+            print('---- generator_dict ----')
+            print(json.dumps(generator_dict,indent=4,ensure_ascii=False))
         
         # database 
         dbhost = self.skin_dict.get('host')
@@ -217,6 +230,14 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
         is_new_database = None
         
         start_ts = time.time()
+        
+        # Hashes of the data uploaded during the last run
+        hash_dict = dict()
+        try:
+            with open(hash_fn,'rt') as f:
+                hash_dict = json.load(f)
+        except (OSError,ValueError):
+            pass
         
         if self.dry_run:
             conn = ConnTest()
@@ -317,8 +338,8 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
                     )
                 elif file.endswith('json'):
                     data = self.process_other(fn,base_php % section,'application/json')
-                elif file.enswith('xml'):
-                    data = self.process_other(fn,base_php % sectoin, 'application/xml')
+                elif file.endswith('xml'):
+                    data = self.process_other(fn,base_php % section, 'application/xml')
                 else:
                     with open(fn,'rb') as f:
                         db_data = f.read()
@@ -326,7 +347,7 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
                 if not self.running: break
                 if not weeutil.weeutil.to_bool(generator_dict[section].get('write_php',global_write_php)):
                     data[0] = None
-                if self.transfer(conn,fn,sql_upd_str,section,data,replace_ext):
+                if self.transfer(conn,fn,sql_upd_str,section,data,replace_ext,hash_dict):
                     ct += 1
             except (LookupError,TypeError,ValueError,OSError) as e:
                 if log_failure:
@@ -336,27 +357,43 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
         if ct: conn.commit()
         # close database connection
         conn.close()
+        
+        # save hashes
+        try:
+            with open(hash_fn,'wt') as f:
+                json.dump(hash_dict,f,ensure_ascii=False)
+        except (OSError,ValueError):
+            pass
 
         # report success
         end_ts = time.time()
         if log_success:
             loginf('Uploaded %s file%s in %.2f seconds' % (ct,'' if ct==1 else 's',end_ts-start_ts))
 
-    def transfer(self, conn, file, sql_str, id, data, replace_ext):
+    def transfer(self, conn, file, sql_str, id, data, replace_ext, hash_dict):
         """ upload to database and change file """
+        # Has data changed?
+        if has_hashlib:
+            filehash = hashlib.sha256(data[1]).hexdigest()
+        else:
+            filehash = None
         # upload to database
-        try:
-            if self.dry_run:
-                print('SQL execute',sql_str)
-                print("      `ID`='%s'" % id)
-                print('-----------------')
-                print(data[1])
-                print('-----------------')
-            else:
-                logdbg(sql_str)
-                conn.execute(sql_str,(data[1],id))
-        except Exception:
-            return False
+        if not filehash or filehash!=hash_dict.get(id):
+            try:
+                if self.dry_run:
+                    print('SQL execute',sql_str)
+                    print("      `ID`='%s'" % id)
+                    print('-----------------')
+                    print(data[1])
+                    print('-----------------')
+                else:
+                    logdbg(sql_str)
+                    conn.execute(sql_str,(data[1],id))
+            except Exception:
+                return False
+        else:
+            logdbg("no need to upload id '%s'" % id)
+        hash_dict[id] = filehash
         # replace extension
         if replace_ext:
             if self.dry_run:
@@ -389,18 +426,18 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
     def process_html(self, file, php, divide_tag, files_list):
         """ split HTML in constant and variable part """
         parser = HTMLdivide(php,files_list,divide_tag,convert_charrefs=False)
-        with open(file,'rt') as f:
+        with open(file,'rt',encoding='utf-8') as f:
             for line in f:
                 parser.feed(line)
         file_data = parser.php_data
         db_data = parser.db_data
-        return file_data, db_data
+        return file_data, db_data.encode('utf-8','ignore')
         
         file_data = ''
         db_data = ''
         # split file
         inner = False
-        with open(file,'rt') as f:
+        with open(file,'rt',encoding='utf-8') as f:
             for line in f:
                 if inner:
                     if '</html>' in line:
@@ -420,7 +457,8 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
                        inner = True
                    else:
                        file_data += line
-        return file_data, db_data
+        logdbg('%s %s' % (type(file_data),type(db_data)))
+        return file_data, db_data.encode('utf-8','ignore')
     
     def create_user(self, conn, databasename, tablename):
         try:
@@ -428,6 +466,38 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
             conn.execute("GRANT SELECT ON %s.%s TO ?@'localhost'" % (database_name,table_name),(self.phpuser[0],))
         except Exception as e:
             logerr('%s %s' % (e.__class__.__name__,e))
+    
+    def merge_skin(self, generator_dict):
+        global_divide_tag = generator_dict.get('html_divide_tag','html')
+        skin_name = generator_dict['merge_skin']
+        report_dict = self.config_dict.get('StdReport',configobj.ConfigObj())
+        skin_dict = report_dict.get(skin_name)
+        if not skin_dict:
+            logerr("skin '%s' not found" % skin_name)
+            return
+        skin_dir = skin_dict.get('skin')
+        if not skin_dir:
+            logerr("no skin directory specified for skin '%s'" % skin_name)
+        if __name__ == '__main__':
+            skin_path = os.path.join(report_dict.get('SKIN_ROOT','.'),skin_dir,'skin.conf')
+        else:
+            skin_path = os.path.join(self.config_dict.get('WEEWX_ROOT','.'),report_dict.get('SKIN_ROOT','.'),skin_dir,'skin.conf')
+        skin_dict = configobj.ConfigObj(skin_path)
+        logdbg('skin_path=%s' % skin_path)
+        logdbg('skin_dict=%s' % skin_dict)
+        for sec,val in skin_dict.get('CheetahGenerator',configobj.ConfigObj()).get('ToDate',configobj.ConfigObj()).items():
+            logdbg('merge_skin %s %s' % (sec,val))
+            if sec in generator_dict:
+                logdbg("'%s' already in generator_dict")
+            else:
+                stale_age = weeutil.weeutil.to_int(val.get('stale_age',0))
+                if stale_age<86400:
+                    template = val.get('template')
+                    if template:
+                        template = template.replace('.tmpl','')
+                        generator_dict[sec] = {
+                            'file':template
+                        }
 
 if __name__ == '__main__':
 
@@ -435,7 +505,13 @@ if __name__ == '__main__':
         'log_success':True,
         'log_failure':True,
         'debug':1,
-        'WEEWX_ROOT':'/'
+        'WEEWX_ROOT':'/',
+        'StdReport':{
+            'SKIN_ROOT':'./test/skins',
+            'Testskin':{
+                'skin':'Testskin'
+            }
+        }
     })
     stn_info = configobj.ConfigObj({
         
