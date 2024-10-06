@@ -194,12 +194,14 @@ Especially look at the item "Additional .ini files parsed".
 ### HTML files
 
 First the file is divided into two parts at the tag specified by
-`html_divide_tag`. Where the inner part was within the outer part, PHP code
-is included. The inner part is uploaded to the database. The original file
-is replaced by the outer part including the PHP code. 
+`html_divide_tag`. The inner part is extracted and uploaded to the database. 
+Where the inner part was within the outer part, PHP code to query the 
+database is included. The original file is replaced by the outer part with
+the PHP code inserted. 
 
 If `replace_file_ext_with_php` is set, the file name extension is replaced by
-`.php` and all internal links are adjusted to the new name.
+`.php` and if `replace_links_to_this_file` is set as well, all internal links 
+are adjusted to the new name.
 
 When the user's browser requests the page, the server processes the PHP code 
 and so merges the inner part into the outer part. The browser does not see
@@ -208,10 +210,16 @@ anything of that dividing and merging.
 ### Other files
 
 The file is uploaded to the database. If `write_php` is set (which is the
-default), the file is replaced by a file containing PHP code. The FTP
-uploader then uploads the replacement file. As the content of that file 
-does not change between consequtive report cycles, the FTP uploader
-does not upload the file again.
+default), the file is replaced by a file containing PHP code to query the
+database. The FTP uploader then uploads the replacement file. As the content 
+of that file does not change between consecutive report cycles, the FTP 
+uploader does not upload the file again.
 
 When the user's browser requests the file, the server processes the PHP code, 
 queries the database for the original file and delivers it to the browser.
+
+## Links
+
+* [Apache Module mod_rewrite](https://httpd.apache.org/docs/2.4/mod/mod_rewrite.html)
+* [Apache Redirecting and Remapping with mod_rewrite](https://httpd.apache.org/docs/trunk/rewrite/remapping.html)
+* [weewx-user: Page not found or empty](https://groups.google.com/g/weewx-user/c/Ioykua7OJm0/m/EYtd_UTMAwAJ)
