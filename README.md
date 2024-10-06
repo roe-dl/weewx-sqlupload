@@ -134,11 +134,29 @@ If you set `replace_extension` to `False` (either globally or by file), the
 original file name extension is not changed. In this case you have to enable
 PHP within the web server configuration. 
 
+You could do so by putting this into `.htaccess`:
 ```
 RewriteEngine On
 RewriteCond %{REQUEST_URI} "=/path/on/server/file.ext"
 RewriteRule ".*" "-" [H=application/x-httpd-php]
 ```
+
+This may work or not, depending on the general configuration of the web
+server. To check you can save the following code as `test.html` and
+`test.php` to your web space and compare the result:
+
+```php
+<?php
+  phpinfo();
+?>
+```
+
+If you open those files in your web server you see a long table of
+configuration data. If you see the text above only, PHP is not enabled. If
+you get a different output from `test.html` and `test.php` the web server is
+probably not configured to process PHP within files with file name extension
+`.html`. You may ask your web space provider to adjust the configuration.
+Especially look at the item "Additional .ini files parsed".
 
 ## What finally happens
 

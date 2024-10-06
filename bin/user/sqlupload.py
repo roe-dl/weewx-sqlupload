@@ -160,11 +160,9 @@ if __name__ == '__main__':
 
 class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
 
-    PHP = '''<?php
+    PHP_PDO = '''<?php
+  include "%%s";
   $id="%%s";
-  $dbname = "%s";
-  $user = "%s";
-  $password = "%s";
   $pdo = new PDO(
     "mysql:host=localhost;dbname=$dbname",
     $user,
@@ -177,6 +175,25 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
     echo $row["TEXT"];
   }
   $pdo = null;
+?>
+'''
+    PHP_MYSQLI = '''<?php
+  include "%%s";
+  $id="%%s";
+  $pdo = new mysqli("localhost",$user,$password,$dbname);
+  $sql = "SELECT * FROM %s WHERE `ID`='" . $id . "'";
+  $reply = $pdo->query($sql);
+  while($row = $reply->fetch_assoc()) {
+    echo $row["TEXT"];
+  }
+  $pdo->close();
+?>
+'''
+    PHP_INI = '''<?php
+  $dbhost = "%s";
+  $dbuser = "%s";
+  $dbpassword = "%s";
+  $dbname = "%s";
 ?>
 '''
 
@@ -224,6 +241,7 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
         username = self.skin_dict.get('username')
         password = self.skin_dict.get('password')
         tablename = self.skin_dict.get('table_name')
+        phpdriver = self.skin_dict.get('php_mysql_driver','PDO').lower()
         sql_upd_str = SQLuploadGenerator.SQL_UPDATE % tablename
         sql_ins_str = SQLuploadGenerator.SQL_INSERT % tablename
         
@@ -287,8 +305,23 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
                     logerr("could not create table '%s': %s %s" % (
                                              tablename,e.__class__.__name__,e))
                 return
+            try:
+                fn = os.path.join(target_path,'weewxsqlupload.php')
+                with open(fn,'wt') as f:
+                    f.write(SQLuploadGenerator.PHP_INI % (
+                                         'localhost',username,password,dbname))
+            except OSError as e:
+                if log_failure:
+                    logerr("could not write %s: %s %s" % (fn,e.__class__.__name__))
+                return
         
-        base_php = SQLuploadGenerator.PHP % (dbname,username,password,tablename)
+        if phpdriver=='pdo':
+            base_php = SQLuploadGenerator.PHP_PDO % tablename
+        elif phpdriver=='mysqli':
+            base_php = SQLuploadGenerator.PHP_MYSQLI % tablename
+        else:
+            logerr("unknown PHP MySQL driver '%s'" % phpdriver)
+            return
 
         replace_ext = generator_dict.get('replace_extension',True)
         files_list = []
@@ -317,6 +350,11 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
                 replace_ext = '.%s' % file.split('.')[-1]
             else:
                 replace_ext = None
+            #
+            x = file.split('/')
+            inc_file = '/'.join((['..']*(len(x)-1))+['weewxsqlupload.php'])
+            logdbg("include file '%s'" % inc_file)
+            php = base_php % (inc_file,section)
             # read file and process
             try:
                 if self.first_run:
@@ -330,20 +368,15 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
                         'html_divide_tag',
                         global_divide_tag
                     )
-                    data = self.process_html(
-                        fn,
-                        base_php % section,
-                        tag,
-                        files_list
-                    )
+                    data = self.process_html(fn, php, tag, files_list)
                 elif file.endswith('json'):
-                    data = self.process_other(fn,base_php % section,'application/json')
+                    data = self.process_other(fn, php, 'application/json')
                 elif file.endswith('xml'):
-                    data = self.process_other(fn,base_php % section, 'application/xml')
+                    data = self.process_other(fn, php, 'application/xml')
                 else:
                     with open(fn,'rb') as f:
                         db_data = f.read()
-                    data = (base_php % section,db_data)
+                    data = (php,db_data)
                 if not self.running: break
                 if not weeutil.weeutil.to_bool(generator_dict[section].get('write_php',global_write_php)):
                     data[0] = None
