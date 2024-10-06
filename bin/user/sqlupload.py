@@ -66,7 +66,7 @@ class HTMLdivide(html.parser.HTMLParser):
         super(HTMLdivide,self).__init__(convert_charrefs=convert_charrefs)
         self.php_data = ''
         self.db_data = ''
-        self.inner = divide_tag!='none'
+        self.inner = divide_tag=='none'
         self.divide_tag = divide_tag
         self.php_script = php
         self.files = files_list
@@ -165,8 +165,8 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
   $id="%%s";
   $pdo = new PDO(
     "mysql:host=localhost;dbname=$dbname",
-    $user,
-    $password
+    $dbuser,
+    $dbpassword
   );
   $sql = "SELECT * FROM %s WHERE `ID`=?";
   $statement = $pdo->prepare($sql); 
@@ -180,7 +180,7 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
     PHP_MYSQLI = '''<?php
   include "%%s";
   $id="%%s";
-  $pdo = new mysqli("localhost",$user,$password,$dbname);
+  $pdo = new mysqli("localhost",$dbuser,$dbpassword,$dbname);
   $sql = "SELECT * FROM %s WHERE `ID`='" . $id . "'";
   $reply = $pdo->query($sql);
   while($row = $reply->fetch_assoc()) {
@@ -233,6 +233,7 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
         if __name__ == '__main__':
             print('---- generator_dict ----')
             print(json.dumps(generator_dict,indent=4,ensure_ascii=False))
+            print('------------------------')
         
         # database 
         dbhost = self.skin_dict.get('host')
@@ -254,8 +255,11 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
         try:
             with open(hash_fn,'rt') as f:
                 hash_dict = json.load(f)
-        except (OSError,ValueError):
-            pass
+            logdbg("successfully loaded hash file '%s'" % hash_fn)
+        except FileNotFoundError:
+            logdbg("hash file '%s' not found (no problem at first run)" % hash_fn)
+        except (OSError,ValueError) as e:
+            logdbg("error loading hash file '%s': %s %s" % (hash_fn,e.__class__.__name__,e))
         
         if self.dry_run:
             conn = ConnTest()
@@ -323,20 +327,20 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
             logerr("unknown PHP MySQL driver '%s'" % phpdriver)
             return
 
-        replace_ext = generator_dict.get('replace_extension',True)
-        files_list = []
-        for section in generator_dict.sections:
-            # file name
-            file = generator_dict[section].get('file',section)
-            if generator_dict[section].get('replace_extension',replace_ext) and '.' in file:
-                files_list.append(file)
+        # list of link targets to replace
+        files_list = self.get_links_to_replace(generator_dict)
 
         # begin transaction
         conn.begin()
         
         ct = 0
+        ctc = 0
+        ctr = 0
         global_divide_tag = generator_dict.get('html_divide_tag','html')
-        global_write_php = weeutil.weeutil.to_bool(generator_dict.get('write_php',True))
+        global_write_php = weeutil.weeutil.to_bool(
+                                          generator_dict.get('write_php',True))
+        global_replace_ext = weeutil.weeutil.to_bool(
+                          generator_dict.get('replace_file_ext_with_php',True))
         for section in generator_dict.sections:
             if not self.running: break
             # file name
@@ -346,10 +350,12 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
             # debug message
             logdbg("processing section '%s', file '%s'" % (section,file))
             # whether to replace the file name extension
-            if file in files_list:
+            if weeutil.weeutil.to_bool(generator_dict[section].get(
+                              'replace_file_ext_with_php',global_replace_ext)):
                 replace_ext = '.%s' % file.split('.')[-1]
             else:
                 replace_ext = None
+            logdbg("replace_ext %s" % replace_ext)
             #
             x = file.split('/')
             inc_file = '/'.join((['..']*(len(x)-1))+['weewxsqlupload.php'])
@@ -373,6 +379,10 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
                     data = self.process_other(fn, php, 'application/json')
                 elif file.endswith('xml'):
                     data = self.process_other(fn, php, 'application/xml')
+                elif file.endswith('png'):
+                    data = self.process_other(fn, php, 'image/png')
+                elif file.endswith('jpg'):
+                    data = self.process_other(fn, php, 'image/jpeg')
                 else:
                     with open(fn,'rb') as f:
                         db_data = f.read()
@@ -380,8 +390,12 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
                 if not self.running: break
                 if not weeutil.weeutil.to_bool(generator_dict[section].get('write_php',global_write_php)):
                     data[0] = None
-                if self.transfer(conn,fn,sql_upd_str,section,data,replace_ext,hash_dict):
-                    ct += 1
+                uploaded, changed, removed = self.transfer(
+                        conn,fn,sql_upd_str,section,data,replace_ext,hash_dict)
+                ct += uploaded
+                ctc += changed
+                ctr += removed
+                
             except (LookupError,TypeError,ValueError,OSError) as e:
                 if log_failure:
                     logerr('%s %s' % (e.__class__.__name__,e))
@@ -395,13 +409,48 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
         try:
             with open(hash_fn,'wt') as f:
                 json.dump(hash_dict,f,ensure_ascii=False)
-        except (OSError,ValueError):
-            pass
+            logdbg("successfully saved hash file '%s'" % hash_fn)
+        except (OSError,ValueError) as e:
+            logdbg("error saving hash file '%s': %s %s" % (
+                                                hash_fn,e.__class__.__name__))
 
         # report success
         end_ts = time.time()
         if log_success:
-            loginf('Uploaded %s file%s in %.2f seconds' % (ct,'' if ct==1 else 's',end_ts-start_ts))
+            loginf(
+                'Uploaded %s record%s, changed %s file%s, and removed %s file%s in %.2f seconds' % (
+                ct,'' if ct==1 else 's',
+                ctc,'' if ctc==1 else 's',
+                ctr,'' if ctr==1 else 's',
+                end_ts-start_ts))
+
+    def get_links_to_replace(self, generator_dict):
+        """ list of link targets to replace
+        
+            If the file name extension of the file to process is to be
+            replaced by `.php` and there is no re-writing of '.html' to
+            `.php` in the web server configuration (e.g. .htaccess file), 
+            all the links to that file have to be replaced as well.
+        """
+        replace_ext = weeutil.weeutil.to_bool(
+                          generator_dict.get('replace_file_ext_with_php',True))
+        replace_links = weeutil.weeutil.to_bool(
+                         generator_dict.get('replace_links_to_this_file',True))
+        write_php = weeutil.weeutil.to_bool(
+                                          generator_dict.get('write_php',True))
+        files_list = []
+        for section in generator_dict.sections:
+            # file name
+            file = generator_dict[section].get('file',section)
+            if (weeutil.weeutil.to_bool(generator_dict[section].get(
+                               'replace_links_to_this_file',replace_links)) and
+                weeutil.weeutil.to_bool(generator_dict[section].get(
+                                  'replace_file_ext_with_php',replace_ext)) and
+                weeutil.weeutil.to_bool(generator_dict[section].get(
+                                                    'write_php',write_php)) and
+                '.' in file):
+                files_list.append(file)
+        return files_list
 
     def transfer(self, conn, file, sql_str, id, data, replace_ext, hash_dict):
         """ upload to database and change file """
@@ -423,9 +472,11 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
                     logdbg(sql_str)
                     conn.execute(sql_str,(data[1],id))
             except Exception:
-                return False
+                return (0,0,0)
+            uploaded = 1
         else:
             logdbg("no need to upload id '%s'" % id)
+            uploaded = 0
         hash_dict[id] = filehash
         # replace extension
         if replace_ext:
@@ -434,7 +485,8 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
             else:
                 os.unlink(file)
             # If there is nothing to write to file, omit it.
-            if not data[0]: return True
+            if not data[0]: 
+                return (uploaded,0,1)
             # Change the file extension to .php
             file = file.replace(replace_ext,'.php')
         # in case of success change file to use the database
@@ -442,10 +494,10 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
             print('-----------------',file)
             print(data[0])
             print('-----------------')
-            return
+            return (uploaded,1,0)
         with open(file,'wt') as f:
             f.write(data[0])
-        return True
+        return (uploaded,1,0)
     
     def process_other(self, file, php, content_type):
         with open(file,'rb') as f:
@@ -540,7 +592,7 @@ if __name__ == '__main__':
         'debug':1,
         'WEEWX_ROOT':'/',
         'StdReport':{
-            'SKIN_ROOT':'./test/skins',
+            'SKIN_ROOT':'./skins',
             'Testskin':{
                 'skin':'Testskin'
             }
@@ -549,7 +601,7 @@ if __name__ == '__main__':
     stn_info = configobj.ConfigObj({
         
     })
-    account = configobj.ConfigObj('./password.txt')
+    account = configobj.ConfigObj('../password.txt')
     test_skin_dict = configobj.ConfigObj('./sqlupload-test.conf')
     skin_dict = configobj.ConfigObj()
     skin_dict.update(config_dict)

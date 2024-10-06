@@ -91,17 +91,20 @@ In `weewx.conf` it looks like that:
         table_name = replace_me
         [[[SQLuploadGenerator]]]
             #html_divide_tag = html
-            #replace_extension = True
+            #replace_file_ext_with_php = True
+            #replace_links_to_this_file = true
             #write_php = True
             #merge_skin = replace_me
             [[[[home-page]]]]
                 file = index.html
                 #html_divide_tag = html
-                #replace_extension = True
+                #replace_file_ext_with_php = True
+                #replace_links_to_this_file = true
                 #write_php = True
             [[[[other-page]]]]
                 file = subdirectory/file.ext
-                #replace_extension = True
+                #replace_file_ext_with_php = True
+                #replace_links_to_this_file = true
                 #write_php = True
             ...
     [[FTP]]
@@ -118,19 +121,47 @@ In `weewx.conf` it looks like that:
 * `html_divide_tag`: tag, which surrounds the variable part of the page, for
   example `html` or `body`. If the value is `none`, the whole file is
   uploaded to the database. 
-* `replace_extension`: if `true` (which is the default), replace the
-  extension of the file by `.php` and adjust the links to this file
-  within other files processed by this extension appropriately
-* `write_php`: write an PHP file instead of the original file
+* `replace_file_ext_with_php`: if `true` (which is the default), replace the
+  extension of the file with `.php`
+* `replace_links_to_this_file`: if `true` (which is the default) adjust all 
+  the links to this file within other files processed by this extension;
+  together with `replace_file_ext_with_php = true` only
+* `write_php`: write a PHP file instead of the original file
 
 ## How to enable PHP on the web server?
+
+This is not about configuring PHP or web servers in general. This is
+about the special requirements of this extension only.
+
+### File name extension `.php`
 
 If the file name ends with `.php` the server processes PHP automatically. 
 So the easiest way is to let this extension rename all the non-static 
 `.html` files to `.php` and replace the internal links as well. This is 
 the default behavior if you do not set special options.
 
-If you set `replace_extension` to `False` (either globally or by file), the
+If you want to reference the file or page by the original name irrespective
+of the name change, you can set up a re-write rule in `.htacces`. It could
+look like that:
+
+```
+RewriteCond %{REQUEST_URI} "=/path/on/server/file.ext"
+RewriteRule "^(.*).html$" "$1.php" [L]
+```
+
+Or to generally deliver the `.php` files if `.html` is requested:
+
+```
+RewriteCond   "$1.php"           -f
+RewriteCond   "$1.html"          !-f
+RewriteRule   "^(.*).html$"      "$1.php"
+```
+
+Source: [Redirecting and Remapping with mod_rewrite, Backward Compatibility](https://httpd.apache.org/docs/trunk/rewrite/remapping.html#backward-compatibility)
+
+### Preserving the original file name extension
+
+If you set `replace_file_ext_with_php` to `false` (either globally or by file), the
 original file name extension is not changed. In this case you have to enable
 PHP within the web server configuration. 
 
@@ -167,7 +198,7 @@ First the file is divided into two parts at the tag specified by
 is included. The inner part is uploaded to the database. The original file
 is replaced by the outer part including the PHP code. 
 
-If `replace_extension` is set, the file name extension is replaced by
+If `replace_file_ext_with_php` is set, the file name extension is replaced by
 `.php` and all internal links are adjusted to the new name.
 
 When the user's browser requests the page, the server processes the PHP code 
