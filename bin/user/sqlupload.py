@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# WeeWX generator to upload skins to using a database
+# WeeWX generator to upload skins using a database
 # Copyright (C) 2024 Johanna Roedenbeck
 
 """
@@ -17,6 +17,22 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+"""
+
+"""
+    This uploader fits in between report creation and FTP upload. It divides
+    the files into a constant and a variable part if possible and then
+    uploads the variable part (or the whole file, if there is no constant
+    part or it cannot be determined) to the web server by SQL. After that
+    it replaces the files by PHP scripts that are to fetch the data from
+    the database.
+    
+    Q: Why the files are replaced instead of saving them to another place?
+    
+    A: The report creation also puts files into the directory that are not 
+       subject to processing by this uploader. The FTP uploader has to upload 
+       them as well as the PHP scripts. So they need to reside in the same
+       directory.
 """
 
 VERSION = "0.1"
@@ -52,7 +68,7 @@ if __name__ == '__main__':
 else:
     import weeutil.logger
     import logging
-    log = logging.getLogger("user.svg2png")
+    log = logging.getLogger("user.sqlupload")
     def logdbg(msg):
         log.debug(msg)
     def loginf(msg):
@@ -506,6 +522,18 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
         return (uploaded,1,0)
     
     def process_other(self, file, php, content_type):
+        """ process files other than HTML 
+        
+            This function processes files that cannot be split into a 
+            constant and a variable part, for example images. It returns
+            the whole content of the file for SQL upload in `db_data`
+            and a small pure PHP script (which is to fetch the database 
+            record) in `file_data`.
+            
+            The PHP script sets the MIME type for the HTTP header as
+            well, as the web server cannot recognize it from the
+            file name extension any more after changing it to `.php`
+        """
         with open(file,'rb') as f:
             db_data = f.read()
         file_data = """%s
@@ -514,17 +542,37 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
         return file_data, db_data
 
     def process_html(self, file, php, divide_tag, files_list):
-        """ split HTML in constant and variable part """
-        parser = HTMLdivide(
-            '%s%s%s' % (SQLuploadGenerator.PHP_START,php,SQLuploadGenerator.PHP_END),
-            files_list,
-            divide_tag,
-            convert_charrefs=False)
-        with open(file,'rt',encoding='utf-8') as f:
-            for line in f:
-                parser.feed(line)
-        file_data = parser.php_data
-        db_data = parser.db_data
+        """ split HTML in constant and variable part 
+        
+            The file is split at the tag defined by the parameter `divide_tag`.
+            It must be a tag that occurs in the file only once. The return
+            value `file_data` contains the part from the beginning up to the
+            start tag, then the value of the parameter `php`, then the 
+            part from the end tag to the end of the file. The return value
+            `db_data` contains the part of the file from the start tag to
+            the end tag (excluding the tags).
+        """
+        try:
+            # initialize parser
+            parser = HTMLdivide(
+                '%s%s%s' % (
+                    SQLuploadGenerator.PHP_START,
+                    php,
+                    SQLuploadGenerator.PHP_END
+                ),
+                files_list,
+                divide_tag,
+                convert_charrefs=False)
+            # feed file into the parser
+            with open(file,'rt',encoding='utf-8') as f:
+                for line in f:
+                    parser.feed(line)
+            # get results
+            file_data = parser.php_data
+            db_data = parser.db_data
+        except (ValueError,TypeError,LookupError) as e:
+            logerr("error parsing HTML file '%s': %s %s" % (file,e.__class__.__name__))
+            return None, None
         return file_data, db_data.encode('utf-8','ignore')
         
         file_data = ''
