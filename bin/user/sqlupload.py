@@ -87,7 +87,7 @@ class HTMLdivide(html.parser.HTMLParser):
             self.php_data += s
         if tag==self.divide_tag:
             self.inner = True
-            self.php_data += self.php_script
+            self.php_data += '\n%s\n' % self.php_script
     
     def handle_endtag(self, tag):
         if tag==self.divide_tag: self.inner = False
@@ -104,6 +104,15 @@ class HTMLdivide(html.parser.HTMLParser):
             self.php_data += data
     
     def handle_startendtag(self, tag, attrs):
+        if True:
+            for idx, val in enumerate(attrs):
+                if val[0]=='src':
+                    href = val[1].split('?')
+                    if self.isinfiles(href[0]):
+                        i = href[0].rfind('.')
+                        if i>=0:
+                            href[0] = '%s.php' % href[0][:i]
+                        attrs[idx] = ('src','?'.join(href))
         s = '<%s %s />' % (tag,' '.join('%s="%s"' % i for i in attrs))
         if self.inner:
             self.db_data += s
@@ -160,10 +169,10 @@ if __name__ == '__main__':
 
 class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
 
-    PHP_PDO = '''<?php
-  include "%%s";
-  $id="%%s";
-  $pdo = new PDO(
+    PHP_START = '<?php\n'
+    PHP_END = '?>'
+    PHP_INCL = '  $id="%s";\n  include "%s";\n'
+    PHP_PDO = '''  $pdo = new PDO(
     "mysql:host=localhost;dbname=$dbname",
     $dbuser,
     $dbpassword
@@ -175,26 +184,18 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
     echo $row["TEXT"];
   }
   $pdo = null;
-?>
 '''
-    PHP_MYSQLI = '''<?php
-  include "%%s";
-  $id="%%s";
-  $pdo = new mysqli("localhost",$dbuser,$dbpassword,$dbname);
+    PHP_MYSQLI = '''  $pdo = new mysqli("localhost",$dbuser,$dbpassword,$dbname);
   $sql = "SELECT * FROM %s WHERE `ID`='" . $id . "'";
   $reply = $pdo->query($sql);
   while($row = $reply->fetch_assoc()) {
     echo $row["TEXT"];
   }
-  $pdo->close();
-?>
-'''
-    PHP_INI = '''<?php
-  $dbhost = "%s";
+  $pdo->close();'''
+    PHP_INI = '''  $dbhost = "%s";
   $dbuser = "%s";
   $dbpassword = "%s";
   $dbname = "%s";
-?>
 '''
 
     SQL_UPDATE = 'UPDATE %s SET `TEXT`=? WHERE `ID`=?'
@@ -302,6 +303,14 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
         
         # try to create table at first run after the start of WeeWX
         if self.first_run:
+            if phpdriver=='pdo':
+                base_php = SQLuploadGenerator.PHP_PDO % tablename
+            elif phpdriver=='mysqli':
+                base_php = SQLuploadGenerator.PHP_MYSQLI % tablename
+            else:
+                logerr("unknown PHP MySQL driver '%s'" % phpdriver)
+                return
+
             try:
                 conn.execute(SQLuploadGenerator.SQL_CREATE % tablename)
             except Exception as e:
@@ -312,21 +321,16 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
             try:
                 fn = os.path.join(target_path,'weewxsqlupload.php')
                 with open(fn,'wt') as f:
+                    f.write(SQLuploadGenerator.PHP_START)
                     f.write(SQLuploadGenerator.PHP_INI % (
                                          'localhost',username,password,dbname))
+                    f.write(base_php)
+                    f.write(SQLuploadGenerator.PHP_END)
             except OSError as e:
                 if log_failure:
                     logerr("could not write %s: %s %s" % (fn,e.__class__.__name__))
                 return
         
-        if phpdriver=='pdo':
-            base_php = SQLuploadGenerator.PHP_PDO % tablename
-        elif phpdriver=='mysqli':
-            base_php = SQLuploadGenerator.PHP_MYSQLI % tablename
-        else:
-            logerr("unknown PHP MySQL driver '%s'" % phpdriver)
-            return
-
         # list of link targets to replace
         files_list = self.get_links_to_replace(generator_dict)
 
@@ -360,7 +364,7 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
             x = file.split('/')
             inc_file = '/'.join((['..']*(len(x)-1))+['weewxsqlupload.php'])
             logdbg("include file '%s'" % inc_file)
-            php = base_php % (inc_file,section)
+            php = SQLuploadGenerator.PHP_INCL % (section,inc_file)
             # read file and process
             try:
                 if self.first_run:
@@ -375,13 +379,15 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
                         global_divide_tag
                     )
                     data = self.process_html(fn, php, tag, files_list)
-                elif file.endswith('json'):
+                elif file.endswith('.txt'):
+                    data = self.process_other(fn, php, 'text/plain')
+                elif file.endswith('.json'):
                     data = self.process_other(fn, php, 'application/json')
-                elif file.endswith('xml'):
+                elif file.endswith('.xml'):
                     data = self.process_other(fn, php, 'application/xml')
-                elif file.endswith('png'):
+                elif file.endswith('.png'):
                     data = self.process_other(fn, php, 'image/png')
-                elif file.endswith('jpg'):
+                elif file.endswith('.jpg') or file.endswith('.jpeg'):
                     data = self.process_other(fn, php, 'image/jpeg')
                 else:
                     with open(fn,'rb') as f:
@@ -502,15 +508,18 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
     def process_other(self, file, php, content_type):
         with open(file,'rb') as f:
             db_data = f.read()
-        file_data = """<?php
+        file_data = """%s
   header('Content-type: %s');
-?>
-%s""" % (content_type,php)
+%s%s""" % (SQLuploadGenerator.PHP_START,content_type,php,SQLuploadGenerator.PHP_END)
         return file_data, db_data
 
     def process_html(self, file, php, divide_tag, files_list):
         """ split HTML in constant and variable part """
-        parser = HTMLdivide(php,files_list,divide_tag,convert_charrefs=False)
+        parser = HTMLdivide(
+            '%s%s%s' % (SQLuploadGenerator.PHP_START,php,SQLuploadGenerator.PHP_END),
+            files_list,
+            divide_tag,
+            convert_charrefs=False)
         with open(file,'rt',encoding='utf-8') as f:
             for line in f:
                 parser.feed(line)
@@ -537,7 +546,9 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
                        x = line.split('<html')
                        i = x[1].find('>')
                        file_data += '%s<html%s\n' % (x[0],x[1][:i+1])
+                       file_data += SQLuploadGenerator.PHP_START
                        file_data += php
+                       file_data += SQLuploadGenerator.PHP_END
                        db_data += x[1][i+1:]
                        inner = True
                    else:
@@ -570,6 +581,7 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
         skin_dict = configobj.ConfigObj(skin_path)
         logdbg('skin_path=%s' % skin_path)
         logdbg('skin_dict=%s' % skin_dict)
+        # CheetahGenerator files
         for sec,val in skin_dict.get('CheetahGenerator',configobj.ConfigObj()).get('ToDate',configobj.ConfigObj()).items():
             logdbg('merge_skin %s %s' % (sec,val))
             if sec in generator_dict:
@@ -583,6 +595,15 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
                         generator_dict[sec] = {
                             'file':template
                         }
+        # ImageGenerator files
+        image_dict = skin_dict.get('ImageGenerator',configobj.ConfigObj())
+        for sec in image_dict.sections:
+            logdbg('merge_skin %s' % sec)
+            val = image_dict[sec]
+            for subsec in val.sections:
+                generator_dict['%s-%s' % (sec,subsec)] = {
+                    'file':'%s.png' % subsec
+                }
 
 if __name__ == '__main__':
 
@@ -595,6 +616,7 @@ if __name__ == '__main__':
             'SKIN_ROOT':'./skins',
             'Testskin':{
                 'skin':'Testskin'
+                #'skin':'/etc/weewx/skins/Seasons'
             }
         }
     })

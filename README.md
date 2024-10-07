@@ -1,20 +1,26 @@
 # SQL Uploader
 
-If you upload your skin using FTP there is a short period of time the server
-cannot deliver the page once every archive interval. To prevent this you
+supplement to WeeWX skins to use the database on the web server for
+uninterrupted availability of the web pages
+
+## What problem this uploader addresses
+
+If you upload your skin using FTP there is a short period of time the web 
+server cannot deliver the page once every archive interval. This happens 
+while it saves the uploaded page to its memory. To prevent this you
 could use `rsync`, but unfortunately this is not available with all web
 space providers. On the other hand, all of them provide databases. So,
-what about uploading the web pages to such a database?
+what about uploading the web pages using such a database?
 
 This extension tries to do so. Put it between the skin configuration and the
 FTP uploader configuration in `weewx.conf`. It then uploads the web pages
 to the database and replaces the original HTML files by PHP files that
-query the database for the text of the web page and delivers it to the
+query the database for the text of the web page and deliver it to the
 user. Links are adjustet automatically.
 
 So no changes to the original skin are required.
 
-The content of the PHP files does not change between consequent report
+The content of the PHP files does not change between consecutive report
 creation cycles. And the original WeeWX FTP uploader does not upload
 files that did not change. So there is always a valid web file on the
 server.
@@ -120,13 +126,47 @@ In `weewx.conf` it looks like that:
 * `file`: file name and path of the file to upload to the database
 * `html_divide_tag`: tag, which surrounds the variable part of the page, for
   example `html` or `body`. If the value is `none`, the whole file is
-  uploaded to the database. 
+  uploaded to the database. Valid for HTML files only.
 * `replace_file_ext_with_php`: if `true` (which is the default), replace the
   extension of the file with `.php`
 * `replace_links_to_this_file`: if `true` (which is the default) adjust all 
   the links to this file within other files processed by this extension;
   together with `replace_file_ext_with_php = true` only
-* `write_php`: write a PHP file instead of the original file
+* `write_php`: write a PHP file instead of the original file which is to
+  query the database and deliver the content of the database record to
+  the user.
+
+### Simple configuration for use together with the built-in Seasons skin
+
+1. Insert the SQLupload configuration to `weewx.conf`
+
+   ```
+   ...
+   [StdReport]
+       ...
+       [[SeasonsReport]]
+           ...
+       ...
+       [[SQLupload]]
+           enable = true
+           skin = SQLupload
+           host = replace_me
+           username = replace_me
+           password = replace_me
+           database_name = replace_me
+           table_name = seasons
+           [[[SQLuploadGenerator]]]
+               merge_skin = SeasonsReport
+       [[FTP]]
+           ...
+   ```
+
+2. Restart WeeWX as described above
+3. Remove `.html` and `.png` files from both the `HTML_ROOT` directory and
+   the web space
+4. wait for the next report creation cycle
+5. If you then enter the URL of your web server into the browser, the web
+   server delivers `index.php` instead of former `index.html` automatically.
 
 ## How to enable PHP on the web server?
 
@@ -223,3 +263,4 @@ queries the database for the original file and delivers it to the browser.
 * [Apache Module mod_rewrite](https://httpd.apache.org/docs/2.4/mod/mod_rewrite.html)
 * [Apache Redirecting and Remapping with mod_rewrite](https://httpd.apache.org/docs/trunk/rewrite/remapping.html)
 * [weewx-user: Page not found or empty](https://groups.google.com/g/weewx-user/c/Ioykua7OJm0/m/EYtd_UTMAwAJ)
+* [WeeWX](https://weewx.com)
