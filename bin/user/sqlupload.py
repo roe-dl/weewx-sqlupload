@@ -92,10 +92,11 @@ class HTMLdivide(html.parser.HTMLParser):
             # replace href to HTML by PHP
             for idx, val in enumerate(attrs):
                 if val[0]=='href':
-                    href = val[1].split('#')
+                    separator = '?' if '?' in val[1] else '#'
+                    href = val[1].split(separator)
                     if self.isinfiles(href[0]):
-                        href[0] = href[0].replace('.html','.php')
-                        attrs[idx] = ('href','#'.join(href))
+                        href[0] = '%s.php' % os.path.splitext(href[0])[0]
+                        attrs[idx] = ('href',separator.join(href))
         s = '<%s %s>' % (tag,' '.join('%s="%s"' % i for i in attrs))
         if self.inner:
             self.db_data += s
@@ -347,8 +348,21 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
                     logerr("could not write %s: %s %s" % (fn,e.__class__.__name__))
                 return
         
+        # get default actions
+        global_actions = generator_dict.get('actions',
+                                        ['sqlupload','writephp','adjustlinks'])
+        if isinstance(global_actions,str): global_actions = [global_actions]
+        global_preserveext = weeutil.weeutil.to_bool(generator_dict.get(
+                                         'preserve_file_name_extension',False))
+        global_divide_tag = generator_dict.get('html_divide_tag','html')
+        logdbg("global options: actions=%s html_divide_tag='%s'" % (global_actions,global_divide_tag))
+        
         # list of link targets to replace
-        files_list = self.get_links_to_replace(generator_dict)
+        files_list = self.get_links_to_replace(generator_dict,global_actions)
+        if __name__ == '__main__':
+            print('------ files_list ------')
+            print(files_list)
+            print('------------------------')
 
         # begin transaction
         conn.begin()
@@ -356,26 +370,29 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
         ct = 0
         ctc = 0
         ctr = 0
-        global_divide_tag = generator_dict.get('html_divide_tag','html')
-        global_write_php = weeutil.weeutil.to_bool(
-                                          generator_dict.get('write_php',True))
-        global_replace_ext = weeutil.weeutil.to_bool(
-                          generator_dict.get('replace_file_ext_with_php',True))
         for section in generator_dict.sections:
             if not self.running: break
+            if (not self.first_run and weeutil.weeutil.to_bool(
+                         generator_dict[section].get('first_run_only',False))):
+                continue
             # file name
             file = generator_dict[section].get('file',section)
             # target file
             fn = os.path.join(target_path,file)
             # debug message
             logdbg("processing section '%s', file '%s'" % (section,file))
-            # whether to replace the file name extension
-            if weeutil.weeutil.to_bool(generator_dict[section].get(
-                              'replace_file_ext_with_php',global_replace_ext)):
-                replace_ext = '.%s' % file.split('.')[-1]
-            else:
-                replace_ext = None
-            logdbg("replace_ext %s" % replace_ext)
+            # actions
+            # Note: If `actions` is not in the section and so `actions`
+            #       becomes `global_actions`, changes to `actions` change
+            #       `global_actions` as well. If you want to change `actions`
+            #       afterwards you must make a copy of the value explicitely
+            #       by using `copy.copy()`.
+            actions = generator_dict[section].get('actions',global_actions)
+            if isinstance(actions,str): actions = [actions]
+            preserveext = weeutil.weeutil.to_bool(generator_dict[section].get(
+                            'preserve_file_name_extension',global_preserveext))
+            # debug message
+            logdbg("actions=%s" % actions)
             #
             x = file.split('/')
             inc_file = '/'.join((['..']*(len(x)-1))+['weewxsqlupload.php'])
@@ -390,13 +407,18 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
                     except Exception as e:
                         logerr(e)
                 if file.endswith('.html'):
-                    tag = generator_dict[section].get(
-                        'html_divide_tag',
-                        global_divide_tag
-                    )
-                    data = self.process_html(fn, php, tag, files_list)
+                    if 'writephp' in actions and 'sqlupload' in actions:
+                        tag = generator_dict[section].get(
+                            'html_divide_tag',
+                            global_divide_tag
+                        )
+                    else:
+                        tag = 'none'
+                    data = self.process_html(fn, php, tag, files_list if 'adjustlinks' in actions else [])
                 elif file.endswith('.txt'):
                     data = self.process_other(fn, php, 'text/plain')
+                elif file.endswith('.js'):
+                    data = self.process_js(fn, php, files_list if 'adjustlinks' in actions else [])
                 elif file.endswith('.json'):
                     data = self.process_other(fn, php, 'application/json')
                 elif file.endswith('.xml'):
@@ -410,16 +432,14 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
                         db_data = f.read()
                     data = (php,db_data)
                 if not self.running: break
-                if not weeutil.weeutil.to_bool(generator_dict[section].get('write_php',global_write_php)):
-                    data[0] = None
                 uploaded, changed, removed = self.transfer(
-                        conn,fn,sql_upd_str,section,data,replace_ext,hash_dict)
+                        conn,fn,actions,preserveext,sql_upd_str,section,data,hash_dict)
                 ct += uploaded
                 ctc += changed
                 ctr += removed
                 
             except (LookupError,TypeError,ValueError,OSError) as e:
-                if log_failure:
+                if log_failure and not file.endswith('.png'):
                     logerr('%s %s' % (e.__class__.__name__,e))
         
         # commit transaction
@@ -446,81 +466,100 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
                 ctr,'' if ctr==1 else 's',
                 end_ts-start_ts))
 
-    def get_links_to_replace(self, generator_dict):
+    def get_links_to_replace(self, generator_dict, default_actions):
         """ list of link targets to replace
         
             If the file name extension of the file to process is to be
             replaced by `.php` and there is no re-writing of '.html' to
             `.php` in the web server configuration (e.g. .htaccess file), 
             all the links to that file have to be replaced as well.
+            
+            Note: Changes to `actions` have an effect on `global_actions`
+                  if the key `actions` is not found in the section.
         """
-        replace_ext = weeutil.weeutil.to_bool(
-                          generator_dict.get('replace_file_ext_with_php',True))
+        global_actions = generator_dict.get('actions',default_actions)
+        if isinstance(global_actions,str): global_actions = [global_actions]
+        global_preserveext = weeutil.weeutil.to_bool(generator_dict.get(
+                                         'preserve_file_name_extension',False))
         replace_links = weeutil.weeutil.to_bool(
                          generator_dict.get('replace_links_to_this_file',True))
-        write_php = weeutil.weeutil.to_bool(
-                                          generator_dict.get('write_php',True))
         files_list = []
         for section in generator_dict.sections:
             # file name
             file = generator_dict[section].get('file',section)
+            actions = generator_dict[section].get('actions',global_actions)
+            if isinstance(actions,str): actions = [actions]
             if (weeutil.weeutil.to_bool(generator_dict[section].get(
                                'replace_links_to_this_file',replace_links)) and
-                weeutil.weeutil.to_bool(generator_dict[section].get(
-                                  'replace_file_ext_with_php',replace_ext)) and
-                weeutil.weeutil.to_bool(generator_dict[section].get(
-                                                    'write_php',write_php)) and
+                not weeutil.weeutil.to_bool(generator_dict[section].get(
+                        'preserve_file_name_extension',global_preserveext)) and
+                'writephp' in actions and
                 '.' in file):
                 files_list.append(file)
         return files_list
 
-    def transfer(self, conn, file, sql_str, id, data, replace_ext, hash_dict):
+    def transfer(self, conn, file, actions, preserveext, sql_str, id, data, hash_dict):
         """ upload to database and change file """
-        # Has data changed?
-        if has_hashlib:
-            filehash = hashlib.sha256(data[1]).hexdigest()
+        if 'sqlupload' in actions:
+            # Has data changed?
+            if has_hashlib:
+                filehash = hashlib.sha256(data[1]).hexdigest()
+            else:
+                filehash = None
+            # upload to database
+            if not filehash or filehash!=hash_dict.get(id):
+                try:
+                    if self.dry_run:
+                        print('SQL execute',sql_str)
+                        print("      `ID`='%s'" % id)
+                        print('-----------------')
+                        print(data[1])
+                        print('-----------------')
+                    else:
+                        logdbg(sql_str)
+                        conn.execute(sql_str,(data[1],id))
+                except Exception:
+                    return (0,0,0)
+                uploaded = 1
+            else:
+                logdbg("no need to upload id '%s'" % id)
+                uploaded = 0
+            hash_dict[id] = filehash
         else:
-            filehash = None
-        # upload to database
-        if not filehash or filehash!=hash_dict.get(id):
-            try:
+            uploaded = 0
+            if 'writephp' not in actions and 'adjustlinks' in actions:
+                # adjust the links only
                 if self.dry_run:
-                    print('SQL execute',sql_str)
-                    print("      `ID`='%s'" % id)
-                    print('-----------------')
+                    print('-----------------',file)
                     print(data[1])
                     print('-----------------')
-                else:
-                    logdbg(sql_str)
-                    conn.execute(sql_str,(data[1],id))
-            except Exception:
-                return (0,0,0)
-            uploaded = 1
-        else:
-            logdbg("no need to upload id '%s'" % id)
-            uploaded = 0
-        hash_dict[id] = filehash
+                    return (uploaded,1,0)
+                with open(file,'wb') as f:
+                    f.write(data[1])
+                return (uploaded,1,0)
         # replace extension
-        if replace_ext:
+        if not preserveext:
             if self.dry_run:
                 print("os.unlink('%s')" % file)
             else:
                 os.unlink(file)
             # If there is nothing to write to file, omit it.
-            if not data[0]: 
+            if 'noremove' not in actions and 'writephp' not in actions: 
                 return (uploaded,0,1)
             # Change the file extension to .php
-            file = file.replace(replace_ext,'.php')
-        # in case of success change file to use the database
-        if self.dry_run:
-            print('-----------------',file)
-            print(data[0])
-            print('-----------------')
+            file = '%s.php' % os.path.splitext(file)[0]
+        if 'writephp' in actions:
+            # in case of success change file to use the database
+            if self.dry_run:
+                print('-----------------',file)
+                print(data[0])
+                print('-----------------')
+                return (uploaded,1,0)
+            with open(file,'wt') as f:
+                f.write(data[0])
             return (uploaded,1,0)
-        with open(file,'wt') as f:
-            f.write(data[0])
-        return (uploaded,1,0)
-    
+        return (uploaded,0,0)
+
     def process_other(self, file, php, content_type):
         """ process files other than HTML 
         
@@ -540,6 +579,56 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
   header('Content-type: %s');
 %s%s""" % (SQLuploadGenerator.PHP_START,content_type,php,SQLuploadGenerator.PHP_END)
         return file_data, db_data
+
+    def process_js(self, file, php, files_list):
+        """ process Javascript files 
+        
+            In JavaScript files, there can be references to files whose
+            file name extension is changed to `.php`.
+        """
+        # Read the JavaScript file
+        with open(file,'rt',encoding='utf-8') as f:
+            db_data = f.read()
+        # Search the JavaScript file for file references
+        sep = None
+        nobackslash = True
+        txt1 = []
+        txt2 = ''
+        for c in db_data:
+            if sep:
+                if c==sep and nobackslash:
+                    # end of string
+                    sep = None
+                    for file in files_list:
+                        if file in txt2:
+                            # one of the references occurs in the JavaScript file
+                            new_file = '%s.php' % os.path.splitext(file)[0]
+                            txt2 = txt2.replace(file,new_file)
+                    txt1.append(txt2)
+                    txt1.append(c)
+                    txt2 = ''
+                else:
+                    txt2 += c
+            else:
+                txt1.append(c)
+                if c in ('"',"'") and nobackslash:
+                    # start of string
+                    sep = c
+            nobackslash = c!='\\' or not nobackslash
+        db_data = ''.join(txt1)
+        """
+        for file in files_list:
+            if file in db_data:
+                # one of the references occurs in the JavaScript file
+                new_file = '%s.php' % os.path.splitext(file)[0]
+                # TODO: do some JavaScript syntax checking
+                db_data = db_data.replace(file,new_file)
+        """
+        # PHP script
+        file_data = """%s
+  header('Content-type: %s');
+%s%s""" % (SQLuploadGenerator.PHP_START,'text/javascript',php,SQLuploadGenerator.PHP_END)
+        return file_data, db_data.encode('utf-8','ignore')
 
     def process_html(self, file, php, divide_tag, files_list):
         """ split HTML in constant and variable part 
@@ -639,7 +728,8 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
                 if stale_age<86400:
                     template = val.get('template')
                     if template:
-                        template = template.replace('.tmpl','')
+                        # remove .tmpl
+                        template = os.path.splitext(template)[0]
                         generator_dict[sec] = {
                             'file':template
                         }

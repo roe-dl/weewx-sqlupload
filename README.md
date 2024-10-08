@@ -96,22 +96,22 @@ In `weewx.conf` it looks like that:
         database_name = replace_me
         table_name = replace_me
         [[[SQLuploadGenerator]]]
+            #actions = sqlupload, writephp, adjustlinks
             #html_divide_tag = html
-            #replace_file_ext_with_php = True
+            #preserve_file_name_extension = false
             #replace_links_to_this_file = true
-            #write_php = True
             #merge_skin = replace_me
             [[[[home-page]]]]
                 file = index.html
+                #actions = sqlupload, writephp, adjustlinks
                 #html_divide_tag = html
-                #replace_file_ext_with_php = True
+                #preserve_file_name_extension = false
                 #replace_links_to_this_file = true
-                #write_php = True
             [[[[other-page]]]]
                 file = subdirectory/file.ext
-                #replace_file_ext_with_php = True
+                #actions = sqlupload, writephp, adjustlinks
+                #preserve_file_name_extension = false
                 #replace_links_to_this_file = true
-                #write_php = True
             ...
     [[FTP]]
         ...
@@ -124,17 +124,38 @@ In `weewx.conf` it looks like that:
   in both the skin and the SQLupload configuration, the SQLupload section 
   takes precedence over the skin section.
 * `file`: file name and path of the file to upload to the database
+* `actions`: a comma-separated list of actions to perform:
+  * `sqlupload`: upload the file to the database. In case of HTML divide
+    it into a constant and a variable part as defined by the 
+    `html_divide_tag` key and upload the variable part only.
+  * `writephp`: replace the original file by a PHP script. In case of HTML,
+    this PHP script includes the constant part. The PHP is then uploaded
+    by FTP together with the other constant files of the skin. Its 
+    purpose is to query the database and to deliver the content of the
+    file it replaced.
+  * `adjustlinks`: adjust the links to other files to reflect the change
+    of their file name extension. Effective only for HTML and JavaScript
+    files. This can be the only option (or combined with `noremove`) in 
+    case of static files that are to upload by FTP later.
+  * `noremove`: do not remove the original file after upload in order to
+    upload it by FTP, too. Not for general use. Not together with
+    `writephp`.
+  The default is `sqlupload, writephp, adjustlinks` if omitted.
 * `html_divide_tag`: tag, which surrounds the variable part of the page, for
   example `html` or `body`. If the value is `none`, the whole file is
-  uploaded to the database. Valid for HTML files only.
-* `replace_file_ext_with_php`: if `true` (which is the default), replace the
-  extension of the file with `.php`
-* `replace_links_to_this_file`: if `true` (which is the default) adjust all 
-  the links to this file within other files processed by this extension;
-  together with `replace_file_ext_with_php = true` only
-* `write_php`: write a PHP file instead of the original file which is to
-  query the database and deliver the content of the database record to
-  the user.
+  uploaded to the database. Effective only for HTML files.
+* `preserve_file_name_extension`: preserve the original file name extension 
+  while writing the PHP script. Together with action `writephp` only. 
+  If you use this option you need special settings within the web server
+  configuration to enable PHP for file name extensions other than
+  `.php`.
+* `replace_links_to_this_file`: if true (which is the default) adjust all 
+  the links to this file within other files 
+* `first_run_only`: process this entry in the first run after the WeeWX
+  start only, optional, default is to process it every report creation
+  cycle. Use this option for files that are listed in the value of the
+  `copy_once` key of the skin and contain links or references to targets 
+  that are subject to the `writephp` action.
 
 ### Simple configuration for use together with the built-in Seasons skin
 
@@ -157,6 +178,9 @@ In `weewx.conf` it looks like that:
            table_name = seasons
            [[[SQLuploadGenerator]]]
                merge_skin = SeasonsReport
+               [[[[seasons.js]]]]
+                   actions = adjustlinks
+                   first_run_only = true
        [[FTP]]
            ...
    ```
@@ -164,9 +188,10 @@ In `weewx.conf` it looks like that:
 2. Restart WeeWX as described above
 3. Remove `.html` and `.png` files from both the `HTML_ROOT` directory and
    the web space
-4. wait for the next report creation cycle
+4. Wait for the next report creation cycle to perform
 5. If you then enter the URL of your web server into the browser, the web
-   server delivers `index.php` instead of former `index.html` automatically.
+   server delivers `index.php` instead of former `index.html` automatically
+   and displays the skin as before.
 
 ## How to enable PHP on the web server?
 
