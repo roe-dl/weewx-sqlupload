@@ -244,7 +244,8 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
         hash_fn = os.path.join(target_path,'#SQLupload.last')
 
         # configuration section for this generator
-        generator_dict = self.skin_dict.get('SQLuploadGenerator',configobj.ConfigObj())
+        generator_dict = self.skin_dict.get('SQLuploadGenerator',
+                                                         configobj.ConfigObj())
         self.dry_run = generator_dict.get('dry_run',False)
         if 'merge_skin' in generator_dict:
             self.merge_skin(generator_dict)

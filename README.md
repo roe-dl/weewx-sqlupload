@@ -1,4 +1,4 @@
-# SQL Uploader
+# SQL Upload Generator
 
 supplement to WeeWX skins to use the database on the web server for
 uninterrupted availability of the web pages
@@ -18,12 +18,14 @@ to the database and replaces the original HTML files by PHP files that
 query the database for the text of the web page and deliver it to the
 user. Links are adjustet automatically.
 
-So no changes to the original skin are required.
+So no changes to the original skin are required. It's simple. See 
+[here](#simple-configuration-for-use-together-with-the-built-in-seasons-skin)
+how to use it for the WeeWX built-in Seasons skin.
 
 The content of the PHP files does not change between consecutive report
 creation cycles. And the original WeeWX FTP uploader does not upload
 files that did not change. So there is always a valid web file on the
-server.
+server now with no interruption.
 
 ## Prerequisites
 
@@ -118,6 +120,8 @@ In `weewx.conf` it looks like that:
 ...
 ```
 
+* `php_mysql_driver`: PHP MySQL driver to use, either `pdo` or `mysqli`,
+  optional, default `pdo` if omitted
 * `merge_skin`: If this key points to a valid skin, its `skin.conf` file is
   searched for templates, and SQLupload entries are created for each of them
   and merged into the configuration. If a section of the same name exists
@@ -157,9 +161,10 @@ In `weewx.conf` it looks like that:
   `copy_once` key of the skin and contain links or references to targets 
   that are subject to the `writephp` action.
 
-### Simple configuration for use together with the built-in Seasons skin
+### Simple configuration for use together with the WeeWX built-in Seasons skin
 
-1. Insert the SQLupload configuration to `weewx.conf`
+1. Activate the database at you web spcace
+2. Insert the SQLupload configuration to `weewx.conf`
 
    ```
    ...
@@ -185,11 +190,11 @@ In `weewx.conf` it looks like that:
            ...
    ```
 
-2. Restart WeeWX as described above
-3. Remove `.html` and `.png` files from both the `HTML_ROOT` directory and
+3. Restart WeeWX as described above
+4. Remove `.html` and `.png` files from both the `HTML_ROOT` directory and
    the web space
-4. Wait for the next report creation cycle to perform
-5. If you then enter the URL of your web server into the browser, the web
+5. Wait for the next report creation cycle to take place
+6. If you then enter the URL of your web server into the browser, the web
    server delivers `index.php` instead of former `index.html` automatically
    and displays the skin as before.
 
@@ -272,6 +277,14 @@ When the user's browser requests the page, the server processes the PHP code
 and so merges the inner part into the outer part. The browser does not see
 anything of that dividing and merging.
 
+### JavaScript files
+
+JavaScript code can contain references to other files. So the file is
+searched for such references, and they are adjusted appropriately.
+In a typical configuration the file is changed in place and uploaded
+by FTP later. No database upload is performed for those files. It
+is not necessary because they do not change regularly.
+
 ### Other files
 
 The file is uploaded to the database. If `writephp` is set (which is the
@@ -294,6 +307,9 @@ queries the database for the original file and delivers it to the browser.
   web space.
 * Make sure the SQLupload configuration section is placed before the FTP
   section but after the skin section in `weewx.conf`.
+* Make sure `HTML_ROOT` points to the same directory in the skin
+  configuration, the SQLupload configuration, and the FTP upload 
+  configuration.
 * Your web space provider may require you to create the database at their
   administration portal.
 * There are different PHP MySQL drivers. If you encounter error messages
@@ -305,4 +321,6 @@ queries the database for the original file and delivers it to the browser.
 * [Apache Module mod_rewrite](https://httpd.apache.org/docs/2.4/mod/mod_rewrite.html)
 * [Apache Redirecting and Remapping with mod_rewrite](https://httpd.apache.org/docs/trunk/rewrite/remapping.html)
 * [weewx-user: Page not found or empty](https://groups.google.com/g/weewx-user/c/Ioykua7OJm0/m/EYtd_UTMAwAJ)
+* [weewx-user: FTP upload and web page display errors](https://groups.google.com/g/weewx-user/c/TLard6hoKxw)
+* [SFTP uploader weewx-sftp](https://github.com/matthewwall/weewx-sftp)
 * [WeeWX](https://weewx.com)
