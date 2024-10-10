@@ -3,29 +3,40 @@
 supplement to WeeWX skins to use the database on the web server for
 uninterrupted availability of the web pages
 
-## What problem this uploader addresses
+## Why use SQLupload?
 
-If you upload your skin using FTP there is a short period of time the web 
-server cannot deliver the page once every archive interval. This happens 
-while it saves the uploaded page to its memory. To prevent this you
-could use `rsync`, but unfortunately this is not available with all web
-space providers. On the other hand, all of them provide databases. So,
-what about uploading the web pages using such a database?
+You sure experienced this situation: You accessed your weather website,
+and you got an incomplete or defective result, or even a 403 or 404
+error message. Some seconds later, when you press "reload", all is perfect 
+again.
+
+What is the reason for that behavior?
+
+At the end of the archive interval - typically every 5 minutes - WeeWX
+newly creates the web pages and uploads them to the web server. While
+the file is written, it is incomplete on the server. If you then access
+it at the same time, you get a page that looks damaged or no page at
+all. This happens more often than you would guess.
+
+To prevent this you could use `rsync`, but unfortunately this is not 
+available with all web space providers. On the other hand, all of them 
+provide databases. So, what about uploading the web pages using such a 
+database?
 
 This extension tries to do so. Put it between the skin configuration and the
-FTP uploader configuration in `weewx.conf`. It then uploads the web pages
-to the database and replaces the original HTML files by PHP files that
-query the database for the text of the web page and deliver it to the
-user. Links are adjustet automatically.
+FTP uploader configuration in `weewx.conf`. It then uploads the data
+to the database and replaces the original files by PHP scripts that
+query the database for the content and deliver it to the
+user. Links are adjusted automatically.
 
 So no changes to the original skin are required. It's simple. See 
 [here](#simple-configuration-for-use-together-with-the-built-in-seasons-skin)
-how to use it for the WeeWX built-in Seasons skin.
+how to use it for the WeeWX built-in **Seasons skin**.
 
 The content of the PHP files does not change between consecutive report
 creation cycles. And the original WeeWX FTP uploader does not upload
 files that did not change. So there is always a valid web file on the
-server now with no interruption.
+server now with no interruption any more.
 
 ## Prerequisites
 
@@ -62,7 +73,7 @@ You need the Python MySQL client module.
    
 3) edit configuration in `weewx.conf`
 
-   See section "Configuration instructions"
+   See section [Configuration instructions](#configuration-instructions)
 
 5) restart weewx
 

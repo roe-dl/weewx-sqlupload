@@ -10,7 +10,7 @@ def loader():
 class SQLuploadInstaller(ExtensionInstaller):
     def __init__(self):
         super(SQLuploadInstaller, self).__init__(
-            version="0.1",
+            version="0.2",
             name='SQLupload',
             description='upload to database',
             author="Johanna Roedenbeck",
