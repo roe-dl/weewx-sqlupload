@@ -29,7 +29,7 @@ to the database and replaces the original files by PHP scripts that
 query the database for the content and deliver it to the
 user. Links are adjusted automatically.
 
-So no changes to the original skin are required. It's simple. See 
+So generally no changes to the original skin are required. It's simple. See 
 [here](#simple-configuration-for-use-together-with-the-built-in-seasons-skin)
 how to use it for the WeeWX built-in **Seasons skin**.
 
@@ -131,8 +131,7 @@ In `weewx.conf` it looks like that:
 ...
 ```
 
-* `php_mysql_driver`: PHP MySQL driver to use, either `pdo` or `mysqli`,
-  optional, default `pdo` if omitted
+Options for general use:
 * `merge_skin`: If this key points to a valid skin, its `skin.conf` file is
   searched for templates, and SQLupload entries are created for each of them
   and merged into the configuration. If a section of the same name exists
@@ -171,6 +170,12 @@ In `weewx.conf` it looks like that:
   cycle. Use this option for files that are listed in the value of the
   `copy_once` key of the skin and contain links or references to targets 
   that are subject to the `writephp` action.
+
+Options in case of trouble:
+* `php_mysql_driver`: PHP MySQL driver to use, either `pdo` or `mysqli`,
+  optional, default `pdo` if omitted
+* `sql_data_type`: data type of the database column that holds the 
+  web page data, optional, default `LONGBLOB`
 
 ### Simple configuration for use together with the WeeWX built-in Seasons skin
 
@@ -295,6 +300,10 @@ searched for such references, and they are adjusted appropriately.
 In a typical configuration the file is changed in place and uploaded
 by FTP later. No database upload is performed for those files. It
 is not necessary because they do not change regularly.
+
+The Belchertown skin uses a special regular expression to get
+the relative paths of its web pages. This WeeWX extension knows about
+it and adjusts it to make it working with `.php` files, too.
 
 ### Other files
 

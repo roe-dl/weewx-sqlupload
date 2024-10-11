@@ -154,7 +154,7 @@ class HTMLdivide(html.parser.HTMLParser):
             self.php_data += s
     
     def handle_charref(self, name):
-        s = '&#%s' % name
+        s = '&#%s;' % name
         if self.inner:
             self.db_data += s
         else:
@@ -217,7 +217,7 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
 
     SQL_UPDATE = 'UPDATE %s SET `TEXT`=? WHERE `ID`=?'
     SQL_INSERT = 'INSERT IGNORE INTO %s(`ID`,`TEXT`) VALUES (?,?)'
-    SQL_CREATE = 'CREATE TABLE IF NOT EXISTS %s(`ID` CHAR(32) PRIMARY KEY, `TEXT` BLOB)'
+    SQL_CREATE = 'CREATE TABLE IF NOT EXISTS %s(`ID` CHAR(32) PRIMARY KEY, `TEXT` %s)'
     
     def __init__(self, config_dict, skin_dict, gen_ts, first_run, stn_info, record=None):
         super(SQLuploadGenerator,self).__init__(config_dict, skin_dict, gen_ts, first_run, stn_info, record)
@@ -262,6 +262,7 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
         password = self.skin_dict.get('password')
         tablename = self.skin_dict.get('table_name')
         phpdriver = self.skin_dict.get('php_mysql_driver','PDO').lower()
+        blobtype = self.skin_dict.get('sql_data_type','LONGBLOB')
         sql_upd_str = SQLuploadGenerator.SQL_UPDATE % tablename
         sql_ins_str = SQLuploadGenerator.SQL_INSERT % tablename
         
@@ -330,7 +331,7 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
                 return
 
             try:
-                conn.execute(SQLuploadGenerator.SQL_CREATE % tablename)
+                conn.execute(SQLuploadGenerator.SQL_CREATE % (tablename,blobtype))
             except Exception as e:
                 if log_failure:
                     logerr("could not create table '%s': %s %s" % (
@@ -401,7 +402,7 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
             php = SQLuploadGenerator.PHP_INCL % (section,inc_file)
             # read file and process
             try:
-                if self.first_run:
+                if self.first_run and 'writephp' in actions:
                     try:
                         logdbg(sql_ins_str)
                         conn.execute(sql_ins_str,(section,''))
@@ -590,14 +591,28 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
         # Read the JavaScript file
         with open(file,'rt',encoding='utf-8') as f:
             db_data = f.read()
+        logdbg('%s: size %d' % (file,len(db_data)))
+        # Special replacement in belchertown.js
+        if file.endswith('js/belchertown.js'):
+            db_data = db_data.replace(
+                'replace(/\\/[^\\/]*html$/,"")',
+                'replace(/\\/[^\\/]*(html|php)$/,"")'
+            )
         # Search the JavaScript file for file references
         sep = None
         nobackslash = True
+        slash = False
         txt1 = []
         txt2 = ''
         for c in db_data:
             if sep:
-                if c==sep and nobackslash:
+                if sep=='/' and c=='\n':
+                    # end of one-line comment
+                    txt1.append(txt2)
+                    txt1.append(c)
+                    txt2 = ''
+                    sep = None
+                elif c==sep and nobackslash and sep in ('"',"'"):
                     # end of string
                     sep = None
                     for file in files_list:
@@ -610,12 +625,19 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
                     txt2 = ''
                 else:
                     txt2 += c
+                #slash = False
             else:
                 txt1.append(c)
-                if c in ('"',"'") and nobackslash:
+                if c in ('/',) and slash and nobackslash:
+                    # start of comment
+                    sep = c
+                elif c in ('"',"'") and nobackslash:
                     # start of string
                     sep = c
+            slash = c=='/' and not slash and nobackslash
             nobackslash = c!='\\' or not nobackslash
+        if txt2: txt1.append(txt2)
+        logdbg('size of list txt1=%d, size of txt2=%d' % (len(txt1),len(txt2)))
         db_data = ''.join(txt1)
         """
         for file in files_list:
