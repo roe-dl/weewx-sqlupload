@@ -245,6 +245,16 @@ in `weewx.conf`:
         [[[SQLuploadGenerator]]]
             actions = sqlupload, writephp
             merge_skin = Belchertown
+            [[[[homepage.json]]]]
+                file = "json/homepage.json"
+            [[[[day.json]]]]
+                file = "json/day.json"
+            [[[[week.json]]]]
+                file = "json/week.json"
+            [[[[month.json]]]]
+                file = "json/month.json"
+            [[[[year.json]]]]
+                file = "json/year.json"
     [[FTP]]
         ...
 ```
@@ -256,6 +266,16 @@ RewriteRule "^(.*).json$" "$1.php" [L]
 RewriteCond %{REQUEST_URI} "=/js/belchertown.js"
 RewriteRule "^(.*).js$" "$1.php" [L]
 RewriteCond %{REQUEST_URI} "=/manifest.json"
+RewriteRule "^(.*).json$" "$1.php" [L]
+RewriteCond %{REQUEST_URI} "=/json/homepage.json"
+RewriteRule "^(.*).json$" "$1.php" [L]
+RewriteCond %{REQUEST_URI} "=/json/day.json"
+RewriteRule "^(.*).json$" "$1.php" [L]
+RewriteCond %{REQUEST_URI} "=/json/week.json"
+RewriteRule "^(.*).json$" "$1.php" [L]
+RewriteCond %{REQUEST_URI} "=/json/month.json"
+RewriteRule "^(.*).json$" "$1.php" [L]
+RewriteCond %{REQUEST_URI} "=/json/year.json"
 RewriteRule "^(.*).json$" "$1.php" [L]
 RewriteCond "%{DOCUMENT_ROOT}$1.php" -f
 RewriteRule "^(.*).html$"      "$1.php"
