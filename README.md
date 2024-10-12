@@ -137,6 +137,10 @@ Options for general use:
   and merged into the configuration. If a section of the same name exists
   in both the skin and the SQLupload configuration, the SQLupload section 
   takes precedence over the skin section.
+* `enable`: enable this entry or not, optional, default `True`.
+  If you overwrite an entry out of the skin included by `merge_skin`, you
+  can use the option `enable` to exclude a file from being processed
+  by SQLupload.
 * `file`: file name and path of the file to upload to the database
 * `actions`: a comma-separated list of actions to perform:
   * `sqlupload`: upload the file to the database. In case of HTML divide
@@ -214,6 +218,54 @@ Options in case of trouble:
    server delivers `index.php` instead of former `index.html` automatically
    and displays the skin as before.
 
+### Configuration preserving the file name extensions
+
+If you have a website that is known to search engines like Google for a
+long time already, you would want to preserve the file names for SEO
+reasons. To do so you can set up special rules in `.htaccess` on the
+web server. The Belchertown skin is used here as an example how the
+configuration looks like for this case.
+
+in `weewx.conf`:
+```
+...
+[StdReport]
+    ...
+    [[Belchertown]]
+        ...
+    ...
+    [[SQLupload]]
+        enable = true
+        skin = SQLupload
+        host = replace_me
+        username = replace_me
+        password = replace_me
+        database_name = replace_me
+        table_name = belchertown
+        [[[SQLuploadGenerator]]]
+            actions = sqlupload, writephp
+            merge_skin = Belchertown
+    [[FTP]]
+        ...
+```
+
+in `.htaccess`:
+```
+RewriteCond %{REQUEST_URI} "=/json/weewx_data.json"
+RewriteRule "^(.*).json$" "$1.php" [L]
+RewriteCond %{REQUEST_URI} "=/js/belchertown.js"
+RewriteRule "^(.*).js$" "$1.php" [L]
+RewriteCond %{REQUEST_URI} "=/manifest.json"
+RewriteRule "^(.*).json$" "$1.php" [L]
+RewriteCond "%{DOCUMENT_ROOT}$1.php" -f
+RewriteRule "^(.*).html$"      "$1.php"
+```
+
+This way all the pages are available under the names they were known before.
+Of course, if you do not care about SEO you can remove the `actions` line 
+from the configuration and access the pages using the file name extension
+`.php`.
+
 ## How to enable PHP on the web server?
 
 This is not about configuring PHP or web servers in general. This is
@@ -238,9 +290,9 @@ RewriteRule "^(.*).html$" "$1.php" [L]
 Or to generally deliver the `.php` files if `.html` is requested:
 
 ```
-RewriteCond   "$1.php"           -f
-RewriteCond   "$1.html"          !-f
-RewriteRule   "^(.*).html$"      "$1.php"
+RewriteCond   "%{DOCUMENT_ROOT}$1.php"    -f
+RewriteCond   "%{DOCUMENT_ROOT}$1.html"   !-f
+RewriteRule   "^(.*).html$"               "$1.php"
 ```
 
 Source: [Redirecting and Remapping with mod_rewrite, Backward Compatibility](https://httpd.apache.org/docs/trunk/rewrite/remapping.html#backward-compatibility)

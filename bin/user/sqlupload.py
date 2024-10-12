@@ -374,6 +374,12 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
         ctr = 0
         for section in generator_dict.sections:
             if not self.running: break
+            # If `enable` is `False` go to the next entry
+            if not weeutil.weeutil.to_bool(
+                                   generator_dict[section].get('enable',True)):
+                continue
+            # If `first_run_only` is set and this is not the first run
+            # after restart, go to the next entry.
             if (not self.first_run and weeutil.weeutil.to_bool(
                          generator_dict[section].get('first_run_only',False))):
                 continue
@@ -429,10 +435,12 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
                     data = self.process_other(fn, php, 'image/png')
                 elif file.endswith('.jpg') or file.endswith('.jpeg'):
                     data = self.process_other(fn, php, 'image/jpeg')
+                elif file.endswith('.svg'):
+                    data = self.process_other(fn, php, 'image/svg+xml')
                 else:
                     with open(fn,'rb') as f:
                         db_data = f.read()
-                    data = (php,db_data)
+                    data = ('%s%s%s' % (SQLuploadGenerator.PHP_START,php,SQLuploadGenerator.PHP_END),db_data)
                 if not self.running: break
                 uploaded, changed, removed = self.transfer(
                         conn,fn,actions,preserveext,sql_upd_str,section,data,hash_dict)
