@@ -215,9 +215,9 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
   $dbname = "%s";
 '''
 
-    SQL_UPDATE = 'UPDATE %s SET `TEXT`=?,`MTIME`=FROM_UNIXTIME(?) WHERE `ID`=?'
+    SQL_UPDATE = 'UPDATE %s SET `TEXT`=?,`CONTENTTYPE`=?,`MTIME`=FROM_UNIXTIME(?) WHERE `ID`=?'
     SQL_INSERT = 'INSERT IGNORE INTO %s(`ID`) VALUES (?)'
-    SQL_CREATE = 'CREATE TABLE IF NOT EXISTS %s(`ID` CHAR(32) PRIMARY KEY, `MTIME` TIMESTAMP NULL DEFAULT NULL, `TEXT` %s NULL)'
+    SQL_CREATE = 'CREATE TABLE IF NOT EXISTS %s(`ID` CHAR(32) PRIMARY KEY, `MTIME` TIMESTAMP NULL DEFAULT NULL, `CONTENTTYPE` VARCHAR(127) NULL, `TEXT` %s NULL)'
     
     def __init__(self, config_dict, skin_dict, gen_ts, first_run, stn_info, record=None):
         super(SQLuploadGenerator,self).__init__(config_dict, skin_dict, gen_ts, first_run, stn_info, record)
@@ -437,10 +437,12 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
                     data = self.process_other(fn, php, 'image/jpeg')
                 elif file.endswith('.svg'):
                     data = self.process_other(fn, php, 'image/svg+xml')
+                elif file.endswith('.gif'):
+                    data = self.process_other(fn, php, 'image/gif')
                 else:
                     with open(fn,'rb') as f:
                         db_data = f.read()
-                    data = ('%s%s%s' % (SQLuploadGenerator.PHP_START,php,SQLuploadGenerator.PHP_END),db_data)
+                    data = ('%s%s%s' % (SQLuploadGenerator.PHP_START,php,SQLuploadGenerator.PHP_END),db_data,None)
                 if not self.running: break
                 uploaded, changed, removed = self.transfer(
                         conn,fn,actions,preserveext,sql_upd_str,section,data,hash_dict)
@@ -531,7 +533,7 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
                         print('-----------------')
                     else:
                         logdbg(sql_str)
-                        conn.execute(sql_str,(data[1],mtime,id))
+                        conn.execute(sql_str,(data[1],data[2],mtime,id))
                 except Exception:
                     return (0,0,0)
                 uploaded = 1
@@ -593,7 +595,7 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
         file_data = """%s
   header('Content-type: %s');
 %s%s""" % (SQLuploadGenerator.PHP_START,content_type,php,SQLuploadGenerator.PHP_END)
-        return file_data, db_data
+        return file_data, db_data, content_type
 
     def process_js(self, file, php, files_list):
         """ process Javascript files 
@@ -664,7 +666,7 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
         file_data = """%s
   header('Content-type: %s');
 %s%s""" % (SQLuploadGenerator.PHP_START,'text/javascript',php,SQLuploadGenerator.PHP_END)
-        return file_data, db_data.encode('utf-8','ignore')
+        return file_data, db_data.encode('utf-8','ignore'), 'text/javascript'
 
     def process_html(self, file, php, divide_tag, files_list):
         """ split HTML in constant and variable part 
@@ -697,8 +699,8 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
             db_data = parser.db_data
         except (ValueError,TypeError,LookupError) as e:
             logerr("error parsing HTML file '%s': %s %s" % (file,e.__class__.__name__))
-            return None, None
-        return file_data, db_data.encode('utf-8','ignore')
+            return None, None, None
+        return file_data, db_data.encode('utf-8','ignore'), 'text/html'
         
         file_data = ''
         db_data = ''
@@ -727,7 +729,7 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
                    else:
                        file_data += line
         logdbg('%s %s' % (type(file_data),type(db_data)))
-        return file_data, db_data.encode('utf-8','ignore')
+        return file_data, db_data.encode('utf-8','ignore'), 'text/html'
     
     def create_user(self, conn, databasename, tablename):
         try:
