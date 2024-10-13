@@ -549,13 +549,14 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
                 return (uploaded,1,0)
         # replace extension
         if not preserveext:
-            if self.dry_run:
-                print("os.unlink('%s')" % file)
-            else:
-                os.unlink(file)
-            # If there is nothing to write to file, omit it.
-            if 'noremove' not in actions and 'writephp' not in actions: 
-                return (uploaded,0,1)
+            if 'noremove' not in actions:
+                if self.dry_run:
+                    print("os.unlink('%s')" % file)
+                else:
+                    os.unlink(file)
+                # If there is nothing to write to file, omit it.
+                if 'writephp' not in actions: 
+                    return (uploaded,0,1)
             # Change the file extension to .php
             file = '%s.php' % os.path.splitext(file)[0]
         if 'writephp' in actions:
@@ -753,10 +754,12 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
         for sec,val in skin_dict.get('CheetahGenerator',configobj.ConfigObj()).get('ToDate',configobj.ConfigObj()).items():
             logdbg('merge_skin %s %s' % (sec,val))
             if sec in generator_dict:
-                logdbg("'%s' already in generator_dict")
+                logdbg("'%s' already in generator_dict" % sec)
+            elif weeutil.weeutil.to_bool(val.get('generate_once',False)):
+                logdbg("'%s' generate_once" % sec)
             else:
                 stale_age = weeutil.weeutil.to_int(val.get('stale_age',0))
-                if stale_age<86400:
+                if stale_age<=300:
                     template = val.get('template')
                     if template:
                         # remove .tmpl

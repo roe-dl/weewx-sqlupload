@@ -6,3 +6,4 @@
 * process comments in JavaScript files
 * Belchertown support
 * support SVG image
+* fix action `noremove`

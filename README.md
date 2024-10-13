@@ -137,6 +137,9 @@ Options for general use:
   and merged into the configuration. If a section of the same name exists
   in both the skin and the SQLupload configuration, the SQLupload section 
   takes precedence over the skin section.
+  The sections `[CheetahGenerator][[ToDate]]` and `[ImageGenerator]` are
+  searched only. Entries that contain one of the keys `generate_once` or
+  `stale_age` are not included.
 * `enable`: enable this entry or not, optional, default `True`.
   If you overwrite an entry out of the skin included by `merge_skin`, you
   can use the option `enable` to exclude a file from being processed
