@@ -215,9 +215,9 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
   $dbname = "%s";
 '''
 
-    SQL_UPDATE = 'UPDATE %s SET `TEXT`=? WHERE `ID`=?'
-    SQL_INSERT = 'INSERT IGNORE INTO %s(`ID`,`TEXT`) VALUES (?,?)'
-    SQL_CREATE = 'CREATE TABLE IF NOT EXISTS %s(`ID` CHAR(32) PRIMARY KEY, `TEXT` %s)'
+    SQL_UPDATE = 'UPDATE %s SET `TEXT`=?,`MTIME`=FROM_UNIXTIME(?) WHERE `ID`=?'
+    SQL_INSERT = 'INSERT IGNORE INTO %s(`ID`) VALUES (?)'
+    SQL_CREATE = 'CREATE TABLE IF NOT EXISTS %s(`ID` CHAR(32) PRIMARY KEY, `MTIME` TIMESTAMP NULL DEFAULT NULL, `TEXT` %s NULL)'
     
     def __init__(self, config_dict, skin_dict, gen_ts, first_run, stn_info, record=None):
         super(SQLuploadGenerator,self).__init__(config_dict, skin_dict, gen_ts, first_run, stn_info, record)
@@ -411,7 +411,7 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
                 if self.first_run and 'writephp' in actions:
                     try:
                         logdbg(sql_ins_str)
-                        conn.execute(sql_ins_str,(section,''))
+                        conn.execute(sql_ins_str,(section,))
                     except Exception as e:
                         logerr(e)
                 if file.endswith('.html'):
@@ -519,6 +519,10 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
             # upload to database
             if not filehash or filehash!=hash_dict.get(id):
                 try:
+                    mtime = os.path.getmtime(file)
+                except OSError:
+                    mtime = time.time()
+                try:
                     if self.dry_run:
                         print('SQL execute',sql_str)
                         print("      `ID`='%s'" % id)
@@ -527,7 +531,7 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
                         print('-----------------')
                     else:
                         logdbg(sql_str)
-                        conn.execute(sql_str,(data[1],id))
+                        conn.execute(sql_str,(data[1],mtime,id))
                 except Exception:
                     return (0,0,0)
                 uploaded = 1

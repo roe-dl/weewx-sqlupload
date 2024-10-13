@@ -410,6 +410,9 @@ queries the database for the original file and delivers it to the browser.
 * There are different PHP MySQL drivers. If you encounter error messages
   about unsuccessful database access in the browser, try another driver
   by setting `php_mysql_driver` to `mysqli` or `pdo`, respectively.
+* If you are not sure whether the database records are updated, open an
+  SQL editor and open the table. There is a column holding the 
+  modification time included.
 
 ## Links
 

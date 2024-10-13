@@ -1,4 +1,4 @@
 #!/bin/bash
 
-cp ./test_files/* ./HTML_ROOT
+cp -p ./test_files/* ./HTML_ROOT
 python3 ../bin/user/sqlupload.py
