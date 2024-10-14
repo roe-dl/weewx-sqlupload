@@ -1,6 +1,6 @@
 0.1 09Oct2024
 * initial version
-0.2
+0.2 14Oct2024
 * fix missing semikolon in handle_charref()
 * BLOB replaced with LONGBLOB
 * process comments in JavaScript files
