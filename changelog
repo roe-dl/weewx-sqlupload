@@ -8,3 +8,13 @@
 * support SVG image
 * fix action `noremove`
 * save modification time and content type in database
+0.3
+* `dict` instead of `elif` for `process_other()`
+* read Belchertown skin `graphs.conf` file
+* make it possible to specify content type and encoding
+* append instead of replace `.php` for files other than `.html`
+* set `Last-Modified` and `Content-Type` HTTP header
+* a lot of tidying up
+* action `remove` instead of `noremove`
+* new action `blockftp` with access to the FTP upload generator's state file
+* RESTful service to upload LOOP packets and ARCHIVE records

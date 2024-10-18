@@ -5,6 +5,8 @@ uninterrupted availability of the web pages
 
 ## Why use SQLupload?
 
+[Zusammenfassung auf Deutsch](https://www.woellsdorf-wetter.de/software/weewx.html#incomplete_page)
+
 You sure experienced this situation: You accessed your weather website,
 and you got an incomplete or defective result, or even a 403 or 404
 error message. Some seconds later, when you press "reload", all is perfect 
@@ -158,10 +160,12 @@ Options for general use:
     of their file name extension. Effective only for HTML and JavaScript
     files. This can be the only option (or combined with `noremove`) in 
     case of static files that are to upload by FTP later.
-  * `noremove`: do not remove the original file after upload in order to
-    upload it by FTP, too. Not for general use. Not together with
-    `writephp`.
-  The default is `sqlupload, writephp, adjustlinks` if omitted.
+  * `blockftp`: update the FTP upload generator state file in order
+    to prevent the file from being uploaded by both SQL and FTP.
+    Alternative to `remove`. This is the default.
+  * `remove`: remove the original file after SQL upload in order to prevent
+    it from being uploaded by both SQL and FTP. Alternative to `blockftp`.
+  The default is `sqlupload, writephp, blockftp, adjustlinks` if omitted.
 * `html_divide_tag`: tag, which surrounds the variable part of the page, for
   example `html` or `body`. If the value is `none`, the whole file is
   uploaded to the database. Effective only for HTML files.
@@ -183,6 +187,8 @@ Options in case of trouble:
   optional, default `pdo` if omitted
 * `sql_data_type`: data type of the database column that holds the 
   web page data, optional, default `LONGBLOB`
+* `file_uploader`: section within `[StdReport]` that holds the related
+  FTP uploader configuration, optional, default `FTP`.
 
 ### Simple configuration for use together with the WeeWX built-in Seasons skin
 
@@ -248,19 +254,14 @@ in `weewx.conf`:
         [[[SQLuploadGenerator]]]
             actions = sqlupload, writephp
             merge_skin = Belchertown
-            [[[[homepage.json]]]]
-                file = "json/homepage.json"
-            [[[[day.json]]]]
-                file = "json/day.json"
-            [[[[week.json]]]]
-                file = "json/week.json"
-            [[[[month.json]]]]
-                file = "json/month.json"
-            [[[[year.json]]]]
-                file = "json/year.json"
     [[FTP]]
         ...
 ```
+
+Please note that SQLupload additionally reads the Belchertown specific
+`graphs.conf` file for chart definition files if
+`user.belchertown.HighchartsJsonGenerator` is in `generator_list` of
+`skin.conf`.
 
 in `.htaccess`:
 ```
