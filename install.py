@@ -18,12 +18,30 @@ class SQLuploadInstaller(ExtensionInstaller):
             config={
                 'StdReport':{
                     'SQLupload':{
+                        'enable':'false',
                         'skin':'SQLupload',
                         'host':'replace_me',
                         'username':'replace_me',
                         'password':'replace_me',
                         'database_name':'replace_me',
                         'table_name':'replace_me'
+                    }
+                },
+                'StdRESTful': {
+                    'SQLupload': {
+                        'enable':'false',
+                        'binding':['LOOP','ARCHIVE'],
+                        'unit_system':'METRIC',
+                        'host':'replace_me',
+                        'username':'replace_me',
+                        'password':'replace_me',
+                        'database_name':'replace_me',
+                        'table_name':'replace_me'
+                    }
+                },
+                'Engine': {
+                    'Services': {
+                        'restful_services':'user.sqlupload.SQLRESTful'
                     }
                 }
             },

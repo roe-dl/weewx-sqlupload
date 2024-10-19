@@ -1,7 +1,8 @@
 # SQL Upload Generator
 
-supplement to WeeWX skins to use the database on the web server for
-uninterrupted availability of the web pages
+* supplement to WeeWX skins to use the database on the web server for
+  uninterrupted availability of the web pages
+* upload LOOP packets and ARCHIVE records to the database on the web server
 
 ## Why use SQLupload?
 
@@ -39,6 +40,10 @@ The content of the PHP files does not change between consecutive report
 creation cycles. And the original WeeWX FTP uploader does not upload
 files that did not change. So there is always a valid web file on the
 server now with no interruption any more.
+
+And finally, if you cannot use MQTT for whatever reason but want to
+show live data, uploading the LOOP packets and ARCHIVE records by SQL to 
+the database on the web server could be an alternative approach.
 
 ## Prerequisites
 
@@ -93,7 +98,7 @@ You need the Python MySQL client module.
    sudo systemctl start weewx
    ```
 
-## Configuration instructions
+## Configuration instructions for skin upload
 
 You can add the configuration either to `weewx.conf` or `skin.conf`.
 
@@ -289,6 +294,79 @@ This way all the pages are available under the names they were known before.
 Of course, if you do not care about SEO you can remove the `actions` line 
 from the configuration and access the pages using the file name extension
 `.php`.
+
+## Configuration instruction for observation data upload
+
+Put the configuration into `weewx.conf`.
+
+```
+[StdRESTful]
+    ...
+    [[SQLupload]]
+        enable = true
+        binding = LOOP, ARCHIVE
+        unit_system = METRIC
+        host = replace_me
+        username = replace_me
+        password = replace_me
+        database_name = replace_me
+        table_name = replace_me
+...
+[Engine]
+    [[Services]]
+        ...
+        restful_services = ..., user.sqlupload.SQLRESTful
+```
+
+You can use the same table for both skin upload and observation data upload.
+
+The options are:
+* `binding`: whether to upload LOOP packets or ARCHIVE records or both
+* `unit_system`: unit system to use for upload. Possible values are
+  `US`, `METRIC`, or `METRICWX`.
+* `host`: name of the database server
+* `username`: user name for the database server
+* `password`: password for the database server
+* `database_name`: name of the database on the server
+* `table_name`: name of the table to write data to
+
+The record ID for the LOOP packets is `LOOP` and for the ARCHIVE records
+`ARCHIVE`. Both records contain data in JSON format. To process them on
+the server, you can use PHP, similar to this example:
+
+```php
+<?php
+  $id = "LOOP";
+  $dbhost = "localhost";
+  $dbuser = "replace_me";
+  $dbpassword = "replace_me";
+  $dbname = "replace_me";
+  $pdo = new PDO(
+    "mysql:host=localhost;dbname=$dbname",
+    $dbuser,
+    $dbpassword
+  );
+  $sql = "SELECT *,UNIX_TIMESTAMP(`MTIME`) AS MTIME_EPOCH FROM belchertown WHERE `ID`=?";
+  $statement = $pdo->prepare($sql); 
+  $statement->execute([$id]);
+  $text = "";
+  while($row = $statement->fetch()) {
+    $text = $text . $row["TEXT"];
+    header("Last-Modified: " . date("r", $row["MTIME_EPOCH"]));
+    header("Content-Type: " . $row["CONTENTTYPE"]);
+  }
+  echo $text;
+  $pdo = null;
+?>
+```
+
+If you save that script on your web server and open it with your browser,
+you will see the actual observation data. You can then use JavaScript to
+process it further. Replace `LOOP` with `ARCHIVE` for the last archive record.
+
+Instead of sending data to the browser as is (like in the example above),
+you can process it within the PHP script, too, and then deliver to the
+browser whatever you made out of the observation data.
 
 ## How to enable PHP on the web server?
 
