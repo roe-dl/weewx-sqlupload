@@ -99,9 +99,30 @@ else:
         log.error(msg)
 
 def get_php_filename(file):
+    """ get the file name for the PHP script out of the orignal file name
+    
+        Args:
+            file (str): file name of the file to upload
+        
+        Returns:
+            str: file name for the PHP script
+    """
     return '%s.php' % (os.path.splitext(file)[0] if file.endswith('.html') or file.endswith('.htm') else file)
 
 class HTMLdivide(html.parser.HTMLParser):
+    """ divide an HTML file into a constant and a variable part and replace URLs
+    
+        Args:
+            php (str): PHP script to insert into the constant part where the
+                variable part was extracted
+            files_list (list): list of URLs to replace
+            divide_tag (str): tag which divides the constant part from the
+                variable one (use `none` to have no constant part)
+        
+        Returns:
+            php_data (str): constant part including PHP to upload as a file
+            db_data (str): variable part to upload by SQL
+    """
 
     def __init__(self, php, files_list, divide_tag='html', convert_charrefs=True):
         super(HTMLdivide,self).__init__(convert_charrefs=convert_charrefs)
@@ -197,6 +218,7 @@ class HTMLdivide(html.parser.HTMLParser):
 
 if __name__ == '__main__':
     class ConnTest(object):
+        """ print SQL statements for dry run """
         def begin(self):
             print('SQL begin')
         def commit(self):
@@ -208,6 +230,7 @@ if __name__ == '__main__':
 
 
 class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
+    """ SQL upload generator """
 
     PHP_START = '<?php\n'
     PHP_END = '?>'
@@ -865,6 +888,7 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
             logerr('%s %s' % (e.__class__.__name__,e))
     
     def merge_skin(self, generator_dict):
+        """ merge skin configuration into the SQLupload confiuration """
         global_divide_tag = generator_dict.get('html_divide_tag','html')
         skin_name = generator_dict['merge_skin']
         report_dict = self.config_dict.get('StdReport',configobj.ConfigObj())
@@ -1060,7 +1084,10 @@ class FTPlastUpload(object):
 ##############################################################################
 
 class SQLRESTful(weewx.restx.StdRESTful):
-    """ service to upload the LOOP packet using SQL """
+    """ service to upload the LOOP packet using SQL 
+    
+        Note: Shutdown handling is included in the base class.
+    """
 
     def __init__(self, engine, config_dict):
         super(SQLRESTful, self).__init__(engine, config_dict)
@@ -1100,7 +1127,10 @@ class SQLRESTful(weewx.restx.StdRESTful):
 
 
 class SQLloopThread(weewx.restx.RESTThread):
-    """ thread to upload the LOOP packet using SQL """
+    """ thread to upload the LOOP packet using SQL 
+    
+        Note: Shutdown handling is included in the base class.
+    """
 
     def __init__(self, q, 
               host=None, port=3306,
@@ -1116,16 +1146,22 @@ class SQLloopThread(weewx.restx.RESTThread):
                                           log_success=log_success,
                                           log_failure=log_failure,
                                           skip_upload=skip_upload)
+        # If `dry_run` ist set, print out the SQL statements instead of
+        # executing them.
         self.dry_run = dry_run
+        # database account data
         self.dbhost = host
         self.dbport = port
         self.dbuser = username
         self.dbpassword = password
         self.dbname = database_name
         self.dbtable = table_name
+        # unit system to use for output
         self.unit_system = weewx.units.unit_constants.get(unit_system,weewx.METRIC)
+        # prepare SQL statements
         self.sql_ins_str = SQLuploadGenerator.SQL_INSERT % self.dbtable
         self.sql_upd_str = SQLuploadGenerator.SQL_UPDATE % self.dbtable
+        # logging
         loginf("%s version %s" % (self.__class__.__name__,VERSION))
         loginf("SQL loop packet upload using unit system %s" % weewx.units.unit_nicknames.get(self.unit_system))
         # database connection
@@ -1166,10 +1202,13 @@ class SQLloopThread(weewx.restx.RESTThread):
             uploading LOOP packets by SQL here it is no use to re-try
             as the packets arrive quite frequent.
         """
+        # record id to upload to
         id = request['id']
+        # modification time of the record
         mtime = request['mtime']
+        # check database connection and open it if closed
         if self.conn:
-            is_newlay_opened = False
+            is_newly_opened = False
         elif self.dry_run:
             self.conn = ConnTest()
             is_newly_opened = True
@@ -1187,6 +1226,7 @@ class SQLloopThread(weewx.restx.RESTThread):
                     logerr("error opening database connection")
                 return
             is_newly_opened = True
+        # execute SQL statements and upload data
         try:
             self.conn.begin()
             if is_newly_opened:
@@ -1196,6 +1236,8 @@ class SQLloopThread(weewx.restx.RESTThread):
         except Exception as e:
             if self.log_failure:
                 logerr("error uploading data: %s %s" % (e.__class__.__name__,e))
+            # in case of errors close the database connection in order to have
+            # it re-opened later on
             self.conn.close()
             self.conn = None
     
@@ -1211,8 +1253,10 @@ class SQLloopThread(weewx.restx.RESTThread):
         return None
 
 
+# log version info at startup
 loginf("%s version %s" % ("SQLupload",VERSION))
 logdbg("has_hashlib=%s, has_pickle=%s" % (has_hashlib,has_pickle))
+
 
 if __name__ == '__main__':
 

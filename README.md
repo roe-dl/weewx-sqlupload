@@ -311,6 +311,7 @@ Put the configuration into `weewx.conf`.
         password = replace_me
         database_name = replace_me
         table_name = replace_me
+        log_success = false
 ...
 [Engine]
     [[Services]]
@@ -319,6 +320,9 @@ Put the configuration into `weewx.conf`.
 ```
 
 You can use the same table for both skin upload and observation data upload.
+
+If you upload LOOP packets we strongly recommend to switch off logging
+successful uploads. 
 
 The options are:
 * `binding`: whether to upload LOOP packets or ARCHIVE records or both
