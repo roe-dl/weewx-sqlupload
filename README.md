@@ -433,6 +433,52 @@ probably not configured to process PHP within files with file name extension
 `.html`. You may ask your web space provider to adjust the configuration.
 Especially look at the item "Additional .ini files parsed".
 
+## Considerations regarding speed
+
+### Upload time vs. file parsing time
+
+Speed may be an issue. There are two things that may take time:
+
+* uploading, especially with a slow Internet connection
+* parsing the HTML and JavaScript files for links and dividing them into
+  a constant and a variable part
+
+There are areas around the world where Internet speed is considerably poor. 
+Think of rural regions of Germany for example. There it can help to reduce
+the amount of data to transfer. You can do so by dividing HTML files into
+a constant part (for example the header) and a variable part (then the 
+body). The constant part is then transfered only once, while the variable
+part is transfered every archive interval. 
+
+But there is also a disadvantage. Parsing the HTML file to find the 
+position to divide it takes time, too. So you have to compare which of
+them takes more time. 
+
+### Automatic renaming of files vs. special web server setup
+
+Another thing that influences speed is the link adjustment. Again there
+are two possibilities:
+
+* Let SQLupload parse all HTML and JavaScript files and adjust the
+  file name extension to `.php`. So you need no special web server
+  configuration.
+* Do not change links and set up a `.htaccess` file to map the old
+  file names to the PHP file names. So you need not parse the HTML
+  and JavaScript files.
+
+If you already parse the HTML files in order to divide them, there is no
+additional costs of time for adjusting the links. So in this case it
+does not matter which possibility you use here.
+
+You can set `profiling` to `2` in `skin.conf` to see how much CPU time 
+each of the files consume for parsing. 
+
+### Overall performance
+
+At the author's system the upload time was cut to approximately to half
+by using SQLupload compared to pure FTP. I am not sure about the general
+performance of SQL compared to FTP.
+
 ## What finally happens
 
 ### HTML files

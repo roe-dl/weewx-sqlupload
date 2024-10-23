@@ -109,6 +109,36 @@ def get_php_filename(file):
     """
     return '%s.php' % (os.path.splitext(file)[0] if file.endswith('.html') or file.endswith('.htm') else file)
 
+def simpleHTMLdivide(file, php, divide_tag):
+    """ simple HTML parser if no link replacement is requested """
+    file_data = ''
+    db_data = ''
+    # split file
+    inner = False
+    with open(file,'rt',encoding='utf-8') as f:
+        for line in f:
+            if inner:
+                if '</html>' in line:
+                    x = line.split('</html>')
+                    db_data += x[0]
+                    file_data += '</html>%s' % x[1]
+                    inner = False
+                else:
+                    db_data += line
+            else:
+                if '<html' in line:
+                    x = line.split('<html')
+                    i = x[1].find('>')
+                    file_data += '%s<html%s\n' % (x[0],x[1][:i+1])
+                    file_data += php
+                    db_data += x[1][i+1:]
+                    inner = True
+                else:
+                    file_data += line
+    logdbg('%s %s' % (type(file_data),type(db_data)))
+    return file_data, db_data.encode('utf-8','ignore'), 'text/html'
+
+
 class HTMLdivide(html.parser.HTMLParser):
     """ divide an HTML file into a constant and a variable part and replace URLs
     
@@ -311,6 +341,7 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
         # determine how much logging is desired
         log_success = weeutil.weeutil.to_bool(weeutil.config.search_up(self.skin_dict, 'log_success', True))
         log_failure = weeutil.weeutil.to_bool(weeutil.config.search_up(self.skin_dict, 'log_failure', True))
+        log_profiling = weeutil.weeutil.to_int(weeutil.config.search_up(self.skin_dict, 'profiling', 0))
 
         # where to find the files
         if self.skin_dict['HTML_ROOT'].startswith('~'):
@@ -380,6 +411,7 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
         is_new_database = None
         
         start_ts = time.time()
+        start_thread_time = time.thread_time_ns()
         
         # Hashes of the data uploaded during the last run
         sql_last_upload = SQLlastUpload(target_path)
@@ -469,6 +501,9 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
             print('------ files_list ------')
             print(files_list)
             print('------------------------')
+        
+        split_thread_time1 = time.thread_time_ns()
+        process_thread_times = dict()
 
         # begin transaction
         conn.begin()
@@ -532,6 +567,7 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
                     except Exception as e:
                         logerr(e)
                 # Process file according to the content type
+                start_process_file = time.thread_time_ns()
                 if fext in ('.html','.htm'):
                     # HTML is divided into a constant and a variable part,
                     # and links are adjusted if configured to do so.
@@ -542,12 +578,22 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
                         )
                     else:
                         tag = 'none'
-                    data = self.process_html(full_local_path, php, tag, 
+                    if tag!='none' or 'adjustlinks' in actions:
+                        # parse the file for the divide tag and links
+                        data = self.process_html(full_local_path, php, tag, 
                                 files_list if 'adjustlinks' in actions else [])
+                    else:
+                        # upload the file by SQL unchanged
+                        data = self.process_other(full_local_path, php,
+                                                                   'text/html')
                 elif fext=='.js':
                     # JavaScript: Links are adjusted if configured to do so.
-                    data = self.process_js(full_local_path, php, 
-                                files_list if 'adjustlinks' in actions else [])
+                    if 'adjustlinks' in actions:
+                        data = self.process_js(full_local_path, php, 
+                                                                    files_list)
+                    else:
+                        data = self.process_other(full_local_path, php,
+                                                      'application/javascript')
                 elif fext in SQLuploadGenerator.OTHER_FILES:
                     # Files of types listed in OTHER_FILES are uploaded as
                     # they are, but their content type is included in the 
@@ -571,6 +617,8 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
                             generator_dict[section].get('encoding')
                         )
                     )
+                end_process_file = time.thread_time_ns()
+                process_thread_times[section] = end_process_file-start_process_file
                 # Abort loop in case of program shutdown
                 if not self.running: break
                 # Transfer data to the server according to configuration
@@ -596,6 +644,7 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
         
         # commit transaction
         if ct: conn.commit()
+        split_thread_time2 = time.thread_time_ns()
         # close database connection
         conn.close()
         
@@ -604,14 +653,25 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
         ftp_last_upload.save()
 
         # report success
+        end_thread_time = time.thread_time_ns()
         end_ts = time.time()
         if log_success:
             loginf(
-                'Uploaded %s record%s, changed %s file%s, and removed %s file%s in %.2f seconds' % (
+                'Uploaded %s record%s, changed %s file%s, and removed %s file%s in %.2f seconds (CPU time %.3f seconds)' % (
                 ct,'' if ct==1 else 's',
                 ctc,'' if ctc==1 else 's',
                 ctr,'' if ctr==1 else 's',
-                end_ts-start_ts))
+                end_ts-start_ts,
+                (end_thread_time-start_thread_time)*0.000000001))
+        if log_profiling:
+            loginf('CPU time: open %.3f, loop %.3f, close %.3f' % (
+                (split_thread_time1-start_thread_time)*0.000000001,
+                (split_thread_time2-split_thread_time1)*0.000000001,
+                (end_thread_time-split_thread_time2)*0.000000001))
+            if log_profiling>1:
+                for section,ti in process_thread_times.items():
+                    loginf('CPU time: %s %.3f seconds' % (
+                                                       section,ti*0.000000001))
 
     def get_links_to_replace(self, generator_dict, default_actions):
         """ list of link targets to replace
@@ -850,36 +910,6 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
             return None, None, None
         return file_data, db_data.encode('utf-8','ignore'), 'text/html'
         
-        file_data = ''
-        db_data = ''
-        # split file
-        inner = False
-        with open(file,'rt',encoding='utf-8') as f:
-            for line in f:
-                if inner:
-                    if '</html>' in line:
-                        x = line.split('</html>')
-                        db_data += x[0]
-                        file_data += '</html>%s' % x[1]
-                        inner = False
-                    else:
-                        db_data += line
-                else:
-                   if '<html' in line:
-                       x = line.split('<html')
-                       i = x[1].find('>')
-                       file_data += '%s<html%s\n' % (x[0],x[1][:i+1])
-                       file_data += SQLuploadGenerator.PHP_START
-                       file_data += php
-                       file_data += SQLuploadGenerator.PHP_ECHO
-                       file_data += SQLuploadGenerator.PHP_END
-                       db_data += x[1][i+1:]
-                       inner = True
-                   else:
-                       file_data += line
-        logdbg('%s %s' % (type(file_data),type(db_data)))
-        return file_data, db_data.encode('utf-8','ignore'), 'text/html'
-    
     def create_user(self, conn, databasename, tablename):
         try:
             conn.execute("CREATE USER ?@'localhost' IDENTIFIED BY ?",self.phpuser)
