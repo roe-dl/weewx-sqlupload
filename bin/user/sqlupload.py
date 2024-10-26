@@ -341,7 +341,7 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
         # determine how much logging is desired
         log_success = weeutil.weeutil.to_bool(weeutil.config.search_up(self.skin_dict, 'log_success', True))
         log_failure = weeutil.weeutil.to_bool(weeutil.config.search_up(self.skin_dict, 'log_failure', True))
-        log_profiling = weeutil.weeutil.to_int(weeutil.config.search_up(self.skin_dict, 'profiling', 0))
+        log_load = weeutil.weeutil.to_int(weeutil.config.search_up(self.skin_dict, 'load_monitoring', 0))
 
         # where to find the files
         if self.skin_dict['HTML_ROOT'].startswith('~'):
@@ -503,7 +503,7 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
             print('------------------------')
         
         split_thread_time1 = time.thread_time_ns()
-        process_thread_times = dict()
+        process_thread_times = []
 
         # begin transaction
         conn.begin()
@@ -618,7 +618,7 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
                         )
                     )
                 end_process_file = time.thread_time_ns()
-                process_thread_times[section] = end_process_file-start_process_file
+                process_thread_times.append((section,end_process_file-start_process_file))
                 # Abort loop in case of program shutdown
                 if not self.running: break
                 # Transfer data to the server according to configuration
@@ -663,15 +663,16 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
                 ctr,'' if ctr==1 else 's',
                 end_ts-start_ts,
                 (end_thread_time-start_thread_time)*0.000000001))
-        if log_profiling:
-            loginf('CPU time: open %.3f, loop %.3f, close %.3f' % (
+        if log_load:
+            loginf('elapsed CPU time: open %.3fs, loop %.3fs, close %.3fs' % (
                 (split_thread_time1-start_thread_time)*0.000000001,
                 (split_thread_time2-split_thread_time1)*0.000000001,
-                (end_thread_time-split_thread_time2)*0.000000001))
-            if log_profiling>1:
-                for section,ti in process_thread_times.items():
-                    loginf('CPU time: %s %.3f seconds' % (
-                                                       section,ti*0.000000001))
+                (end_thread_time-split_thread_time2)*0.000000001
+            ))
+            if log_load>1:
+                loginf('elapsed CPU time: %s' % ' '.join(
+                    ['%s:%.3fs' % (sec,ti*0.000000001) for sec,ti in process_thread_times]
+                ))
 
     def get_links_to_replace(self, generator_dict, default_actions):
         """ list of link targets to replace

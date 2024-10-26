@@ -18,3 +18,4 @@
 * action `remove` instead of `noremove`
 * new action `blockftp` with access to the FTP upload generator's state file
 * RESTful service to upload LOOP packets and ARCHIVE records
+* load logging

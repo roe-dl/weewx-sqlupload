@@ -3,6 +3,28 @@
 * supplement to WeeWX skins to use the database on the web server for
   uninterrupted availability of the web pages
 * upload LOOP packets and ARCHIVE records to the database on the web server
+  for live update
+
+## Content
+
+* [Why use SQLupload?](#why-use-sqlupload)
+* [Prerequisites](#prerequisites)
+* [Installation instructions](#installation-instructions)
+* [Configuration instructions for skin upload](#configuration-instructions-for-skin-upload)
+  * [Simple configuration for use together with the WeeWX built-in Seasons skin](#simple-configuration-for-use-together-with-the-weewx-built-in-seasons-skin)
+  * [Configuration preserving the file name extensions](#configuration-preserving-the-file-name-extensions)
+* [Configuration instruction for observation data upload](#configuration-instruction-for-observation-data-upload)
+* [How to enable PHP on the web server?](#how-to-enable-php-on-the-web-server)
+* [Considerations regarding speed](#considerations-regarding-speed)
+  * [Upload time vs. file parsing time](#upload-time-vs-file-parsing-time)
+  * [Automatic renaming of files vs. special web server setup](#automatic-renaming-of-files-vs-special-web-server-setup)
+  * [Overall performance](#overall-performance)
+* [What finally happens](#what-finally-happens)
+  * [HTML files](#html-files)
+  * [JavaScript files](#javascript-files)
+  * [Other files](#other-files)
+* [Troubleshooting](#troubleshooting)
+* [Links](#links)
 
 ## Why use SQLupload?
 
@@ -471,7 +493,7 @@ additional costs of time for adjusting the links. So in this case it
 does not matter which possibility you use here.
 
 You can set `profiling` to `2` in `skin.conf` to see how much CPU time 
-each of the files consume for parsing. 
+each of the files consumes for parsing. 
 
 ### Overall performance
 
@@ -484,13 +506,13 @@ performance of SQL compared to FTP.
 ### HTML files
 
 First the file is divided into two parts at the tag specified by
-`html_divide_tag`. The inner part is extracted and uploaded to the database. 
-Where the inner part was within the outer part, PHP code to query the 
-database is included. The original file is replaced by the outer part with
-the PHP code inserted. 
+`html_divide_tag` (except it is set to `none`). The inner part is extracted 
+and uploaded to the database. Where the inner part was within the outer part, 
+PHP code to query the database is included. The original file is replaced 
+with the outer part with the PHP code inserted. 
 
 If `preserve_file_name_extension` is not set, the file name extension is 
-replaced with `.php` and if `replace_links_to_this_file` is set as well, 
+replaced with `.php` and if `replace_links_to_this_file` is set, 
 all internal links are adjusted to the new name.
 
 When the user's browser requests the page, the server processes the PHP code 
