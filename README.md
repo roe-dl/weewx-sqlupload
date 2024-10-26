@@ -161,6 +161,13 @@ In `weewx.conf` it looks like that:
 ```
 
 Options for general use:
+* `host`: host name of the database server, mandatory. 
+* `port`: port number of the database server, optional, default 3306
+* `username`: user name for database access, mandatory.
+* `password`: password for database access, mandatory.
+* `database_name`: name of the database, mandatory.
+* `table_name`: name of the database table to use, mandatory. The table
+  is created if it does not exist.
 * `merge_skin`: If this key points to a valid skin, its `skin.conf` file is
   searched for templates, and SQLupload entries are created for each of them
   and merged into the configuration. If a section of the same name exists
@@ -216,6 +223,21 @@ Options in case of trouble:
   web page data, optional, default `LONGBLOB`
 * `file_uploader`: section within `[StdReport]` that holds the related
   FTP uploader configuration, optional, default `FTP`.
+* `load_monitoring`: Put this option into the root level of `skin.conf`.
+  The value is the level of load monitoring to perform. `0` switches
+  load monitoring off. This is the default. If `1` the CPU consumption
+  is logged every archive cycle. If `2` even more details are logged.
+* `log_success`: whether to log or not to log successful operation,
+  optional. The default is to use the general logging configuration
+  of WeeWX.
+* `log_failure`: whether to log or not to log errors, optional. The
+  default is to use the general logging configuration of WeeWX.
+* `dry_run`: In case you run SQLupload standalone and set `dry_run` to
+  `true`, the SQL statements are printed out instead of executed.
+  This is for debugging only.
+
+If you set WeeWX into debugging mode, SQLupload emits more logging
+messages, too.
 
 ### Simple configuration for use together with the WeeWX built-in Seasons skin
 
@@ -351,6 +373,7 @@ The options are:
 * `unit_system`: unit system to use for upload. Possible values are
   `US`, `METRIC`, or `METRICWX`.
 * `host`: name of the database server
+* `port`: port number of the database server, optional, default 3306
 * `username`: user name for the database server
 * `password`: password for the database server
 * `database_name`: name of the database on the server
@@ -492,7 +515,7 @@ If you already parse the HTML files in order to divide them, there is no
 additional costs of time for adjusting the links. So in this case it
 does not matter which possibility you use here.
 
-You can set `profiling` to `2` in `skin.conf` to see how much CPU time 
+You can set `load_monitoring` to `2` in `skin.conf` to see how much CPU time 
 each of the files consumes for parsing. 
 
 ### Overall performance
