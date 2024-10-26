@@ -8,7 +8,7 @@
 * support SVG image
 * fix action `noremove`
 * save modification time and content type in database
-0.3
+0.3 26Oct2024
 * `dict` instead of `elif` for `process_other()`
 * read Belchertown skin `graphs.conf` file
 * make it possible to specify content type and encoding
