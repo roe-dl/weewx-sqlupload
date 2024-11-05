@@ -35,7 +35,7 @@
        directory.
 """
 
-VERSION = "0.3"
+VERSION = "0.4"
 
 import os
 import os.path
@@ -761,7 +761,7 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
                     return (uploaded,0,1)
             # Change the file extension to .php
             file = get_php_filename(file)
-        if 'writephp' in actions and (self.first_run or preserveext):
+        if 'writephp' in actions and (self.first_run or preserveext or not os.path.isfile(file)):
             # If `preserveext` is `True`, overwrite the original file by
             # the PHP script, otherwise write the PHP script to a separate
             # file using file name extension `.php`.
