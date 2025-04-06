@@ -21,3 +21,4 @@
 * load logging
 0.4
 * check for missing files at action `writephp`
+* configurable PDO charset

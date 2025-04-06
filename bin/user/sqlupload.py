@@ -266,7 +266,7 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
     PHP_END = '?>'
     PHP_INCL = '  $id="%s";\n  include "%s";\n'
     PHP_PDO = '''  $pdo = new PDO(
-    "mysql:host=localhost;dbname=$dbname",
+    "mysql:host=localhost;dbname=$dbname%s",
     $dbuser,
     $dbpassword
   );
@@ -375,6 +375,7 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
                                               self.skin_dict.get('table_name'))
         phpdriver = self.skin_dict.get('php_mysql_driver','PDO').lower()
         blobtype = self.skin_dict.get('sql_data_type','LONGBLOB')
+        sqlcharset = self.skin_dict.get('sql_charset')
         sqlcolumns = SQLuploadGenerator.SQL_SELCOL
         sql_upd_str = SQLuploadGenerator.SQL_UPDATE % tablename
         sql_ins_str = SQLuploadGenerator.SQL_INSERT % tablename
@@ -459,7 +460,8 @@ class SQLuploadGenerator(weewx.reportengine.ReportGenerator):
         # try to create table at first run after the start of WeeWX
         if self.first_run:
             if phpdriver=='pdo':
-                base_php = SQLuploadGenerator.PHP_PDO % (sqlcolumns,tablename)
+                _sqlcharset = ';charset=%s' % sqlcharset if sqlcharset else ''
+                base_php = SQLuploadGenerator.PHP_PDO % (_sqlcharset,sqlcolumns,tablename)
             elif phpdriver=='mysqli':
                 base_php = SQLuploadGenerator.PHP_MYSQLI % (sqlcolumns,tablename)
             else:

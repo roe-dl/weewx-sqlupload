@@ -24,7 +24,8 @@ class SQLuploadInstaller(ExtensionInstaller):
                         'username':'replace_me',
                         'password':'replace_me',
                         'database_name':'replace_me',
-                        'table_name':'replace_me'
+                        'table_name':'replace_me',
+                        'sql_charset':'utf8mb4'
                     }
                 },
                 'StdRESTful': {

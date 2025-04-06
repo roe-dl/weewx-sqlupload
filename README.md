@@ -137,6 +137,7 @@ In `weewx.conf` it looks like that:
         password = replace_me
         database_name = replace_me
         table_name = replace_me
+        sql_charset = utf8mb4
         [[[SQLuploadGenerator]]]
             #actions = sqlupload, writephp, adjustlinks
             #html_divide_tag = html
@@ -168,6 +169,10 @@ Options for general use:
 * `database_name`: name of the database, mandatory.
 * `table_name`: name of the database table to use, mandatory. The table
   is created if it does not exist.
+* `sql_charset`: If there are international characters in the section names
+  there you may be required to set a character set for the database access.
+  Try `utf8mb4`. If the option is omitted or empty, no character set is
+  specified to open the database within the PHP script.
 * `merge_skin`: If this key points to a valid skin, its `skin.conf` file is
   searched for templates, and SQLupload entries are created for each of them
   and merged into the configuration. If a section of the same name exists
